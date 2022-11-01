@@ -28,7 +28,7 @@ import logging
 import time
 from enum import Enum
 
-version = "1.2.9"
+version = "1.3.0"
 
 # Constants:
 LA_SOLVER = 'march_cu'
@@ -43,6 +43,7 @@ class Options:
 	min_refuted_leaves = 1000
 	max_la_time = 86400
 	max_cdcl_time = 5000
+	max_script_time = 864000
 	nstep = 10
 	stop_sat = False
 	stop_time = False
@@ -56,6 +57,7 @@ class Options:
 		'min_refuted_leaves : ' + str(self.min_refuted_leaves) + '\n' +\
 		'max_la_time : ' + str(self.max_la_time) + '\n' +\
 		'max_cdcl_time : ' + str(self.max_cdcl_time) + '\n' +\
+		'max_script_time : ' + str(self.max_script_time) + '\n' +\
 		'nstep : ' + str(self.nstep) + '\n' +\
 		'stop_sat : ' + str(self.stop_sat) + '\n' +\
 		'stop_time: ' + str(self.stop_time) + '\n' +\
@@ -74,6 +76,8 @@ class Options:
 				self.max_la_time = int(p.split('-maxlat=')[1])
 			if '-maxcdclt=' in p:
 				self.max_cdcl_time = int(p.split('-maxcdclt=')[1])
+			if '-maxt=' in p:
+				self.max_script_time = int(p.split('-maxt=')[1])
 			if '-nstep=' in p:
 				self.nstep = int(p.split('-nstep=')[1])
 			if '-seed=' in p:
@@ -308,6 +312,7 @@ if __name__ == '__main__':
 		'-minref=<int>   - (default : 1000)    minimal number of refuted leaves' + '\n' +\
 		'-maxlat=<int>   - (default : 86400)   time limit in seconds for lookahead solver' + '\n' +\
 		'-maxcdclt=<int> - (default : 5000)    time limit in seconds for CDCL solver' + '\n' +\
+		'-maxt=<int>     - (default : 864000)  script time limit in seconds' + '\n' +\
 		'-nstep=<int>    - (default : 10)      step for decreasing threshold n for lookahead solver' + '\n' +\
 		'-seed=<int>     - (default : time)    seed for pseudorandom generator' + '\n' +\
 		'--stop_time     - (default : False)   stop if CDCL solver is interrupted' + '\n' +\
@@ -395,12 +400,17 @@ if __name__ == '__main__':
 
 	stopped_solvers = set()
 	results = dict()
+	isExit = False
 	for n, random_cubes in sorted_random_cubes_n.items():
+		if isExit:
+				break
 		logging.info('*** n : %d' % n)
 		logging.info('random_cubes size : %d' % len(random_cubes))
 		results[n] = []
 		task_index = 0
 		for solver in SOLVERS:
+			if isExit:
+				break
 			if solver in stopped_solvers:
 				continue
 			cube_index = 0
@@ -410,6 +420,11 @@ if __name__ == '__main__':
 					time.sleep(2)
 				# Break if solver becomes a stopped one.
 				if solver in stopped_solvers:
+					break
+				# Break if script time limit is reached:
+				if time.time() - start_time > op.max_script_time:
+					logging.info('Script time limit it reached, stop.')
+					isExit = True
 					break
 				pool2.apply_async(process_cube_solver, args=(cnf_name, n, cube, cube_index, task_index, solver), callback=collect_cube_solver_result)
 				task_index += 1
@@ -426,6 +441,11 @@ if __name__ == '__main__':
 
 	pool2.close()
 	pool2.join()
+
+	# Kill remaining processes if any:
+	kill_unuseful_processes()
+	for solver in SOLVERS:
+		kill_solver(solver)
 
 	# Write results:
 	for n, res in results.items():
