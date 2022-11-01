@@ -1,3 +1,23 @@
+# Created on: 5 Apr 2020
+# Author: Oleg Zaikin
+# E-mail: zaikin.icc@gmail.com
+#
+# Does sampling to find a cutoff threshold with minimal runtime estimation
+# of the conquer phase of Cube-and-Conquer. The threshold is used on the cubing
+# phase to split a given problem.
+#
+# Example of the estimating mode:
+#     python3 ./find_cnc_threshold.py problem.cnf -maxcdclt=5000 --stop_time
+#  problem.cnf    : CNF.
+#  -maxcdclt=5000 : on each subproblem a CDCL solver is limited by 5000 seconds.
+#  --stop_time    : if the CDCL solver is interrupted, stop script.
+#
+# Example of the SAT-solving mode:
+#     python3 ./find_cnc_threshold.py problem.cnf --stop_sat
+#  problem.cnf    : CNF.
+#  --stop_sat     : if a satisfying assignment is found, stop script.
+#==============================================================================
+
 import sys
 import os
 import time
@@ -8,13 +28,14 @@ import logging
 import time
 from enum import Enum
 
-version = "1.2.8"
+version = "1.2.9"
 
 # Constants:
 LA_SOLVER = 'march_cu'
 MAX_CUBES_PARALLEL = 5000000
 SOLVERS = ['kissat_sc2021']
 
+# Input options:
 class Options:
 	sample_size = 1000
 	min_cubes = 10000
@@ -62,12 +83,14 @@ class Options:
 			if p == '--stop_time':
 				self.stop_time = True
 
+# Kill unuseful processes after script termination:
 def kill_unuseful_processes():
 	sys_str = 'killall -9 ' + LA_SOLVER
 	o = os.popen(sys_str).read()
 	sys_str = 'killall -9 timelimit'
 	o = os.popen(sys_str).read()
 
+# Kill a solver:
 def kill_solver(solver : str):
 	# Kill only a binary solver, let a script solver finisn and clean:
 	if '.sh' not in solver:
@@ -75,10 +98,12 @@ def kill_solver(solver : str):
 	    sys_str = 'killall -9 ' + solver.replace('./','')
 	    o = os.popen(sys_str).read()
 
+# Remove file:
 def remove_file(file_name):
 	sys_str = 'rm -f ' + file_name
 	o = os.popen(sys_str).read()
 
+# Find the number of free variables:
 def get_free_vars(cnf_name):
 	free_vars = []
 	with open(cnf_name) as cnf:
@@ -95,6 +120,7 @@ def get_free_vars(cnf_name):
 					free_vars.append(var)
 	return free_vars
 
+# Parse lookahead solver's log:
 def parse_cubing_log(o):
 	cubes = -1
 	refuted_leaves = -1
@@ -105,6 +131,7 @@ def parse_cubing_log(o):
 			refuted_leaves = int(line.split(' refuted leaves')[0].split(' ')[-1])
 	return cubes, refuted_leaves
 
+# Add cube to a CNF as one-literal clauses:
 def add_cube(old_cnf_name : str, new_cnf_name : str, cube : list):
 	cnf_var_number = 0
 	clauses = []
@@ -126,6 +153,7 @@ def add_cube(old_cnf_name : str, new_cnf_name : str, cube : list):
 		for c in cube:
 			cnf_file.write(c + ' 0\n')
 
+# Find a satisfying assignment in CDCL solver's log:
 def find_sat_log(o):
 	res = False
 	lines = o.split('\n')
@@ -137,6 +165,7 @@ def find_sat_log(o):
 			break
 	return res
 
+# Generate a random sample of cubes:
 def get_random_cubes(cubes_name):
 	global op
 	lines = []
@@ -157,7 +186,8 @@ def get_random_cubes(cubes_name):
 		logging.error('incorrect number of of random and remaining cubes')
 		exit(1)
 	return random_cubes, remaining_cubes_str
-	
+
+# Process a given threshold n:
 def process_n(n : int, cnf_name : str, op : Options):
 	print('n : %d' % n)
 	start_t = time.time()
@@ -173,6 +203,7 @@ def process_n(n : int, cnf_name : str, op : Options):
 	cubing_time = float(t)
 	return n, cubes_num, refuted_leaves, cubing_time, cubes_name
 
+# Collect result for threshold n:
 def collect_n_result(res):
 	global random_cubes_n
 	global exit_cubes_creating
@@ -201,6 +232,7 @@ def collect_n_result(res):
 		exit_cubes_creating = True
 		logging.info('exit_cubes_creating : ' + str(exit_cubes_creating))
 
+# Stop CDCL solver:
 def stop_solver(solver : str, message : str, res=[]):
 	global stopped_solvers
 	global start_time
@@ -214,6 +246,7 @@ def stop_solver(solver : str, message : str, res=[]):
 	logging.info(stopped_solvers)
 	kill_solver(solver)
 
+# Add cube to a CNF as one-literal clauses, run CDCL solver:
 def process_cube_solver(cnf_name : str, n : int, cube : list, cube_index : int, task_index : int, solver : str):
 	global op
 	known_cube_cnf_name = './sample_cnf_n_' + str(n) + '_cube_' + str(cube_index) + '_task_' + str(task_index) + '.cnf'
@@ -233,6 +266,7 @@ def process_cube_solver(cnf_name : str, n : int, cube : list, cube_index : int, 
 		cdcl_log = ''
 	return cnf_name, n, cube_index, solver, solver_time, isSat, cdcl_log
 
+# Collect a result obtained by CDCL solver on a CNF with cube:
 def collect_cube_solver_result(res):
 	global results
 	global op
@@ -260,6 +294,7 @@ def collect_cube_solver_result(res):
 	elif solver_time > op.max_cdcl_time and op.stop_time:
 		stop_solver(solver, 'CDCL solver reached time limit', res)
 
+# Main function:
 if __name__ == '__main__':
 	cpu_number = mp.cpu_count()
 	exit_cubes_creating = False
@@ -305,7 +340,7 @@ if __name__ == '__main__':
 		n -= 1
 	logging.info('start n : %d ' % n)
 
-	# prepare an output file
+	# Prepare an output file:
 	stat_name = 'stat_' + cnf_name
 	stat_name = stat_name.replace('.','')
 	stat_name = stat_name.replace('/','')
@@ -314,12 +349,12 @@ if __name__ == '__main__':
 	stat_file.close()
 
 	random_cubes_n = dict()
-	# use 1 CPU core if many cubes (much RAM)
+	# Use 1 CPU core if many cubes (too much RAM):
 	if op.max_cubes > MAX_CUBES_PARALLEL:
 		pool = mp.Pool(1)
 	else:
 		pool = mp.Pool(cpu_number)
-	# find required n and their cubes numbers
+	# Find required n and their cubes numbers:
 	while not exit_cubes_creating:
 		pool.apply_async(process_n, args=(n, cnf_name, op), callback=collect_n_result)
 		while len(pool._cache) >= cpu_number: # wait until any cpu is free
@@ -331,7 +366,7 @@ if __name__ == '__main__':
 			kill_unuseful_processes()
 			time.sleep(2) # wait for processes' termination
 			break
-	
+
 	elapsed_time = time.time() - start_time
 	logging.info('elapsed_time : ' + str(elapsed_time))
 	logging.info('random_cubes_n : ')
@@ -340,24 +375,24 @@ if __name__ == '__main__':
 	pool.join()
 
 	pool2 = mp.Pool(cpu_number)
-	
-	# prepare file for results
+
+	# Prepare file for results:
 	sample_name = 'sample_results_' + cnf_name
 	sample_name = sample_name.replace('.','')
 	sample_name = sample_name.replace('/','')
 	sample_name += '.csv'
 	with open(sample_name, 'w') as sample_file:
 		sample_file.write('n cube-index solver time\n')
-	# sort dict by n in descending order
+	# Sort dict by n in descending order:
 	sorted_random_cubes_n = collections.OrderedDict(sorted(random_cubes_n.items()))
-	
+
 	logging.info('sorted_random_cubes_n : ')
 	logging.info(sorted_random_cubes_n)
-	# for evary n solve cube-problems from the random sample
+	# for evary n solve cube-problems from the random sample:
 	logging.info('')
 	logging.info('processing random samples')
 	logging.info('')
-	
+
 	stopped_solvers = set()
 	results = dict()
 	for n, random_cubes in sorted_random_cubes_n.items():
@@ -384,7 +419,7 @@ if __name__ == '__main__':
 		#logging.info(results[n])
 		elapsed_time = time.time() - start_time
 		logging.info('elapsed_time : ' + str(elapsed_time) + '\n')
-		
+
 		if len(stopped_solvers) == len(SOLVERS):
 			logging.info('stop main loop')
 			break
@@ -392,13 +427,13 @@ if __name__ == '__main__':
 	pool2.close()
 	pool2.join()
 
-	# write results
+	# Write results:
 	for n, res in results.items():
 		with open(sample_name, 'a') as sample_file:
 			for r in res:
 				sample_file.write('%d %d %s %.2f\n' % (n, r[0], r[1], r[2])) # tuple (cube_index,solver,solver_time)
 
-	# remove tmp files from solver's script
+	# Remove tmp files from solver's script:
 	remove_file('./*.mincnf')
 	remove_file('./*.cubes')
 	remove_file('./*.ext')
