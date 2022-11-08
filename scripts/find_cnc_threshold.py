@@ -28,11 +28,10 @@ import logging
 import time
 from enum import Enum
 
-version = "1.3.0"
+version = "1.3.1"
 
 # Constants:
 LA_SOLVER = 'march_cu'
-MAX_CUBES_PARALLEL = 5000000
 SOLVERS = ['kissat_sc2021']
 
 # Input options:
@@ -40,6 +39,7 @@ class Options:
 	sample_size = 1000
 	min_cubes = 10000
 	max_cubes = 1000000
+	max_cubes_parallel = 10000000
 	min_refuted_leaves = 1000
 	max_la_time = 86400
 	max_cdcl_time = 5000
@@ -54,6 +54,7 @@ class Options:
 		return 'sample_size : ' + str(self.sample_size) + '\n' +\
 		'min_cubes : ' + str(self.min_cubes) + '\n' +\
 		'max_cubes : ' + str(self.max_cubes) + '\n' +\
+		'max_cubes_parallel : ' + str(self.max_cubes_parallel) + '\n' +\
 		'min_refuted_leaves : ' + str(self.min_refuted_leaves) + '\n' +\
 		'max_la_time : ' + str(self.max_la_time) + '\n' +\
 		'max_cdcl_time : ' + str(self.max_cdcl_time) + '\n' +\
@@ -70,6 +71,8 @@ class Options:
 				self.min_cubes = int(p.split('-minc=')[1])
 			if '-maxc=' in p:
 				self.max_cubes = int(p.split('-maxc=')[1])
+			if '-maxcpar=' in p:
+				self.max_cubes_parallel = int(p.split('-maxcpar=')[1])
 			if '-minref=' in p:
 				self.min_refuted_leaves = int(p.split('-minref=')[1])
 			if '-maxlat=' in p:
@@ -86,6 +89,22 @@ class Options:
 				self.stop_sat = True
 			if p == '--stop_time':
 				self.stop_time = True
+
+def print_usage():
+	print('Usage : script cnf-name [options]')
+	print('options :\n' +\
+	'-sample=<int>   - (default : 1000)    random sample size' + '\n' +\
+	'-minc=<int>     - (default : 10000)   minimal number of cubes' + '\n' +\
+	'-maxc=<int>     - (default : 1000000) maximal number of cubes' + '\n' +\
+	'-maxcpar=<int>  - (default : 1000000) maximal number of cubes processed in parallel' + '\n' +\
+	'-minref=<int>   - (default : 1000)    minimal number of refuted leaves' + '\n' +\
+	'-maxlat=<int>   - (default : 86400)   time limit in seconds for lookahead solver' + '\n' +\
+	'-maxcdclt=<int> - (default : 5000)    time limit in seconds for CDCL solver' + '\n' +\
+	'-maxt=<int>     - (default : 864000)  script time limit in seconds' + '\n' +\
+	'-nstep=<int>    - (default : 10)      step for decreasing threshold n for lookahead solver' + '\n' +\
+	'-seed=<int>     - (default : time)    seed for pseudorandom generator' + '\n' +\
+	'--stop_time     - (default : False)   stop if CDCL solver is interrupted' + '\n' +\
+	'--stop_sat      - (default : False)   stop if a satisfying assignment is found' + '\n')
 
 # Kill unuseful processes after script termination:
 def kill_unuseful_processes():
@@ -304,19 +323,7 @@ if __name__ == '__main__':
 	exit_cubes_creating = False
 
 	if len(sys.argv) < 2:
-		print('Usage : script cnf-name [options]')
-		print('options :\n' +\
-		'-sample=<int>   - (default : 1000)    random sample size' + '\n' +\
-		'-minc=<int>     - (default : 10000)   minimal number of cubes' + '\n' +\
-		'-maxc=<int>     - (default : 1000000) maximal number of cubes' + '\n' +\
-		'-minref=<int>   - (default : 1000)    minimal number of refuted leaves' + '\n' +\
-		'-maxlat=<int>   - (default : 86400)   time limit in seconds for lookahead solver' + '\n' +\
-		'-maxcdclt=<int> - (default : 5000)    time limit in seconds for CDCL solver' + '\n' +\
-		'-maxt=<int>     - (default : 864000)  script time limit in seconds' + '\n' +\
-		'-nstep=<int>    - (default : 10)      step for decreasing threshold n for lookahead solver' + '\n' +\
-		'-seed=<int>     - (default : time)    seed for pseudorandom generator' + '\n' +\
-		'--stop_time     - (default : False)   stop if CDCL solver is interrupted' + '\n' +\
-		'--stop_sat      - (default : False)   stop if a satisfying assignment is found' + '\n')
+		print_usage()
 		exit(1)
 	cnf_name = sys.argv[1]
 
@@ -355,7 +362,7 @@ if __name__ == '__main__':
 
 	random_cubes_n = dict()
 	# Use 1 CPU core if many cubes (too much RAM):
-	if op.max_cubes > MAX_CUBES_PARALLEL:
+	if op.max_cubes > op.max_cubes_parallel:
 		pool = mp.Pool(1)
 	else:
 		pool = mp.Pool(cpu_number)
