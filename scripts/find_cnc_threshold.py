@@ -28,14 +28,13 @@ import logging
 import time
 from enum import Enum
 
-version = "1.3.2"
+version = "1.3.3"
 
-# Constants:
-LA_SOLVER = 'march_cu'
 SOLVERS = ['kissat_sc2021']
 
 # Input options:
 class Options:
+	la_solver = 'march_cu'
 	sample_size = 1000
 	min_cubes = 10000
 	max_cubes = 1000000
@@ -51,7 +50,8 @@ class Options:
 	def __init__(self):
 		self.seed = round(time.time() * 1000)
 	def __str__(self):
-		return 'sample_size : ' + str(self.sample_size) + '\n' +\
+		return 'la_solver : ' + str(self.la_solver) + '\n' +\
+		'sample_size : ' + str(self.sample_size) + '\n' +\
 		'min_cubes : ' + str(self.min_cubes) + '\n' +\
 		'max_cubes : ' + str(self.max_cubes) + '\n' +\
 		'max_cubes_parallel : ' + str(self.max_cubes_parallel) + '\n' +\
@@ -65,6 +65,8 @@ class Options:
 		'seed : ' + str(self.seed) + '\n'
 	def read(self, argv) :
 		for p in argv:
+			if '-la_solver=' in p:
+				self.la_solver = p.split('-la_solver=')[1]
 			if '-sample=' in p:
 				self.sample_size = int(p.split('-sample=')[1])
 			if '-minc=' in p:
@@ -93,22 +95,23 @@ class Options:
 def print_usage():
 	print('Usage : script cnf-name [options]')
 	print('options :\n' +\
-	'-sample=<int>   - (default : 1000)    random sample size' + '\n' +\
-	'-minc=<int>     - (default : 10000)   minimal number of cubes' + '\n' +\
-	'-maxc=<int>     - (default : 1000000) maximal number of cubes' + '\n' +\
-	'-maxcpar=<int>  - (default : 1000000) maximal number of cubes processed in parallel' + '\n' +\
-	'-minref=<int>   - (default : 1000)    minimal number of refuted leaves' + '\n' +\
-	'-maxlat=<int>   - (default : 86400)   time limit in seconds for lookahead solver' + '\n' +\
-	'-maxcdclt=<int> - (default : 5000)    time limit in seconds for CDCL solver' + '\n' +\
-	'-maxt=<int>     - (default : 864000)  script time limit in seconds' + '\n' +\
-	'-nstep=<int>    - (default : 10)      step for decreasing threshold n for lookahead solver' + '\n' +\
-	'-seed=<int>     - (default : time)    seed for pseudorandom generator' + '\n' +\
-	'--stop_time     - (default : False)   stop if CDCL solver is interrupted' + '\n' +\
-	'--stop_sat      - (default : False)   stop if a satisfying assignment is found' + '\n')
+	'-la_solver=<str> - (default : march_cu) lookahead solver' + '\n' +\
+	'-sample=<int>    - (default : 1000)     random sample size' + '\n' +\
+	'-minc=<int>      - (default : 10000)    minimal number of cubes' + '\n' +\
+	'-maxc=<int>      - (default : 1000000)  maximal number of cubes' + '\n' +\
+	'-maxcpar=<int>   - (default : 1000000)  maximal number of cubes processed in parallel' + '\n' +\
+	'-minref=<int>    - (default : 1000)     minimal number of refuted leaves' + '\n' +\
+	'-maxlat=<int>    - (default : 86400)    time limit in seconds for lookahead solver' + '\n' +\
+	'-maxcdclt=<int>  - (default : 5000)     time limit in seconds for CDCL solver' + '\n' +\
+	'-maxt=<int>      - (default : 864000)   script time limit in seconds' + '\n' +\
+	'-nstep=<int>     - (default : 10)       step for decreasing threshold n for lookahead solver' + '\n' +\
+	'-seed=<int>      - (default : time)     seed for pseudorandom generator' + '\n' +\
+	'--stop_time      - (default : False)    stop if CDCL solver is interrupted' + '\n' +\
+	'--stop_sat       - (default : False)    stop if a satisfying assignment is found' + '\n')
 
 # Kill unuseful processes after script termination:
-def kill_unuseful_processes():
-	sys_str = 'killall -9 ' + LA_SOLVER
+def kill_unuseful_processes(la_solver : str):
+	sys_str = 'killall -9 ' + op.la_solver
 	o = os.popen(sys_str).read()
 	sys_str = 'killall -9 timelimit'
 	o = os.popen(sys_str).read()
@@ -214,7 +217,7 @@ def process_n(n : int, cnf_name : str, op : Options):
 	print('n : %d' % n)
 	start_t = time.time()
 	cubes_name = './cubes_n_' + str(n) + '_' + cnf_name.replace('./','').replace('.cnf','')
-	system_str = 'timelimit -T 1 -t ' + str(int(op.max_la_time)) +  ' ' + LA_SOLVER + ' ' + cnf_name + \
+	system_str = 'timelimit -T 1 -t ' + str(int(op.max_la_time)) +  ' ' + op.la_solver + ' ' + cnf_name + \
 	' -n ' + str(n) + ' -o ' + cubes_name
 	out = os.popen(system_str).read()
 	t = time.time() - start_t
@@ -374,7 +377,7 @@ if __name__ == '__main__':
 		if exit_cubes_creating or n <= 0:
 			#pool.terminate()
 			logging.info('killing unuseful processes')
-			kill_unuseful_processes()
+			kill_unuseful_processes(op.la_solver)
 			time.sleep(2) # wait for processes' termination
 			break
 
