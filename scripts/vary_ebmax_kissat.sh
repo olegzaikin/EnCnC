@@ -21,39 +21,39 @@
 #   CNF         - CNF file name
 #   cpu_num     - number of CPU cores
 #   start_ebmax - start value of ebmax
-#   kissat_conf - kissat configuration (default, sat, or unsat)
+#   target      - kissat parameter 'target phases' (0=?,1=stable,2=focused) [1]
 # The script generates cpu_num even positive numbers starting from start_ebmax,
-# and runs kissat with the corresponding values of -eliminatebound and given
-# configuration.
+# and runs kissat with the corresponding values of --eliminatebound and
+# --target.
 #
 # Example:
-#   vary_ebmax_kissat.sh problem.cnf 4 0 sat
+#   vary_ebmax_kissat.sh problem.cnf 4 0 2
 # starts 4 processes:
-#   kissat --eliminatebound=0 problem.cnf &> out_problem_conf=sat_ebmax=0 &
-#   kissat --eliminatebound=2 problem.cnf &> out_problem_conf=sat_ebmax=2 &
-#   kissat --eliminatebound=4 problem.cnf &> out_problem_conf=sat_ebmax=4 &
-#   kissat --eliminatebound=6 problem.cnf &> out_problem_conf=sat_ebmax=6 &
+#   kissat --eliminatebound=0 --target=2 problem.cnf &> out_problem_target=2_ebmax=0 &
+#   kissat --eliminatebound=2 --target=2 problem.cnf &> out_problem_target=2_ebmax=2 &
+#   kissat --eliminatebound=4 --target=2 problem.cnf &> out_problem_target=2_ebmax=4 &
+#   kissat --eliminatebound=6 --target=2 problem.cnf &> out_problem_target=2_ebmax=6 &
 #==============================================================================
 
 
-version="0.0.2"
+version="0.0.3"
 
 script_name="vary_ebmax_kissat.sh"
 kissat_name="kissat_sc2021"
 
 if ([ $# -ne 4 ]) then
-  echo "Usage: $script_name CNF cpu_num start_ebmax kissat_conf"
+  echo "Usage: $script_name CNF cpu_num start_ebmax kissat_target"
   exit 1
 fi
 
 CNF=$1
 cpu_num=$2
 ebmax_start=$3
-kissat_conf=$4
-echo "CNF         : $CNF"
-echo "cpu_num     : $cpu_num"
-echo "ebmax_start : $ebmax_start"
-echo "kissat_conf : $kissat_conf"
+target=$4
+echo "CNF           : $CNF"
+echo "cpu_num       : $cpu_num"
+echo "ebmax_start   : $ebmax_start"
+echo "kissat_target : $target"
 
 let "ebmax_end = $ebmax_start + $cpu_num - 1"
 echo "ebmax_end   : $ebmax_end"
@@ -65,7 +65,7 @@ for (( i=1; i<=$cpu_num; i++ ))
 do
     echo $ebmax
     set -x
-    $kissat_name --$kissat_conf --eliminatebound=$ebmax $CNF &> out_${cnfbase}_conf=${kissat_conf}_ebmax=$ebmax &
+    $kissat_name --target=$target --eliminatebound=$ebmax $CNF &> out_${cnfbase}_target=${target}_ebmax=$ebmax &
     { set +x; } 2>/dev/null
     ebmax=$(( $ebmax + 2 ))
 done
