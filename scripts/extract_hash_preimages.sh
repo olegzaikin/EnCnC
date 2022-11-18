@@ -14,7 +14,7 @@
 
 version="0.0.2"
 
-scriptname="extract_hash_preimages.sh"
+scriptname="extract_md4_preimages.sh"
 
 [ $# -eq 3 ] || \
 {
@@ -27,6 +27,5 @@ extension_stack=$2
 original_cnf=$3
 
 ./extend-solution.sh $solver_output $extension_stack > ext_sol
-python3 ./sort_solution.py $original_cnf ./ext_sol | tee output.txt
-python3 ./sort_solution.py $original_cnf ./ext_sol > hex_$(basename -- $solver_output)
+python3 ./sort_solution.py $original_cnf ./ext_sol | tee hex_$(basename -- $solver_output)
 rm ext_sol
