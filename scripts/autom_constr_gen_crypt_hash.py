@@ -14,7 +14,7 @@ import os
 from enum import Enum
 import find_cnc_threshold as FindCncTr
 
-version = '0.0.1'
+version = '0.0.2'
 script_name = 'autom_constr_gen_crypt_hash.py'
 
 MARCH_NAME = 'march_cu'
@@ -27,29 +27,29 @@ class CubeType(Enum):
 
 # Input options:
 class Options:
-  leaf = CubeType.first # first, random or last leaf
+  cubetype = CubeType.first # first, random or last cube
   nstep = 100 # decrease step for the cutoff threshold
   cpunum = 1 # CPU cores
   seed = 0
   def __init__(self):
     self.seed = round(time.time() * 1000)
   def __str__(self):
-    return 'leaf : ' + str(self.leaf.name) + '\n' +\
+    return 'cube type : ' + str(self.cubetype.name) + '\n' +\
     'nstep : ' + str(self.nstep) + '\n' +\
     'cpunum : ' + str(self.cpunum) + '\n' +\
     'seed : ' + str(self.seed) + '\n'
   def read(self, argv) :
     for p in argv:
-      if '-leaf=' in p:
-        s = p.split('-leaf=')[1]
+      if '-cubetype=' in p:
+        s = p.split('-cubetype=')[1]
         if s == 'first':
-          self.leaf = CubeType.first
+          self.cubetype = CubeType.first
         elif s == 'random':
-          self.leaf = CubeType.random
+          self.cubetype = CubeType.random
         elif s == 'last':
-          self.leaf = CubeType.last
+          self.cubetype = CubeType.last
         else:
-          print('Unknown leaf type')
+          print('Unknown cube type')
           exit(1)
       if '-nstep=' in p:
         self.nstep = int(p.split('-nstep=')[1])
@@ -61,10 +61,10 @@ class Options:
 def print_usage():
 	print('Usage : ' + script_name + ' CNF [options]')
 	print('options :\n' +\
-	'-leaf=<str>   - (default : first) which leaf to choose : first, random, or last' + '\n' +\
-	'-nstep=<int>  - (default : 100)   step for decreasing threshold n for lookahead solver' + '\n' +\
-  '-cpunum=<int> - (default : 1)     CPU cores' + '\n' +\
-  '-seed=<int>   - (default : time)  seed for pseudorandom generator' + '\n')
+	'-cubetype=<str> - (default : first) which cube to choose : first, random, or last' + '\n' +\
+	'-nstep=<int>    - (default : 100)   step for decreasing threshold n for lookahead solver' + '\n' +\
+        '-cpunum=<int>   - (default : 1)     CPU cores' + '\n' +\
+        '-seed=<int>     - (default : time)  seed for pseudorandom generator' + '\n')
 
 # Read cubes from file:
 def read_cubes(cubes_name : str):
@@ -91,21 +91,15 @@ def get_march_free_vars_num(cnf_name : str):
       return int(line.split('c number of free variables = ')[1])
   return -1
 
-def find_cube_add_to_cnf(cnf_name : str, itr : int):
-    global op
+def find_cube_add_to_cnf(op, cnf_name : str, orig_cnf_name : str, itr : int):
     print('cnf name : ' + cnf_name)
-    up_cnf_name = 'tmp_cnf_UP.cnf'
-    up_sys_str = CADICAL_NAME + ' -d 0 -f ' + cnf_name + ' -o ' + up_cnf_name
-    #print(up_sys_str)
-    o = os.popen(up_sys_str).read()
-    cubes_name = 'tmp_cubes'
-    print('cnf after UP ; ' + up_cnf_name)
-    free_vars_num = get_march_free_vars_num(up_cnf_name)
+    free_vars_num = get_march_free_vars_num(cnf_name)
     assert(free_vars_num > 0)
     print('free_vars_num : ' + str(free_vars_num))
     cutoff_threshold = free_vars_num - op.nstep
     print('cutoff_threshold : ' + str(cutoff_threshold))
-    march_sys_str = MARCH_NAME + ' ' + up_cnf_name + ' -n ' +\
+    cubes_name = 'tmp_cubes'
+    march_sys_str = MARCH_NAME + ' ' + cnf_name + ' -n ' +\
         str(cutoff_threshold) + ' -o ' + cubes_name
     print(march_sys_str)
     o = os.popen(march_sys_str).read()
@@ -115,18 +109,18 @@ def find_cube_add_to_cnf(cnf_name : str, itr : int):
     if cubes_num == 0:
         return cubes_num, ''
     cube = []
-    if op.leaf.name == 'first':
+    if op.cubetype.name == 'first':
         cube = cubes[0]
-    elif op.leaf.name == 'random':
+    elif op.cubetype.name == 'random':
         i = random.randint(0, len(cubes)-1)
         cube = cubes[i]
-    elif op.leaf.name == 'last':
+    elif op.cubetype.name == 'last':
         cube = cubes[-1]
     print('chosen cube : ')
     print(cube)
-    cube_cnf_name = 'tmp_cube' + str(itr) + '.cnf'
-    FindCncTr.add_cube(up_cnf_name, cube_cnf_name, cube)
-    return cubes_num, cube_cnf_name
+    iter_cnf_name = orig_cnf_name.split('.cnf')[0] + '_' + op.cubetype.name + '_iter' + str(itr) + '.cnf'
+    FindCncTr.add_cube(cnf_name, iter_cnf_name, cube)
+    return cubes_num, iter_cnf_name, cube
 
 # Main function:
 if __name__ == '__main__':
@@ -144,16 +138,22 @@ if __name__ == '__main__':
     isLeafReached = False 
     itr = 0
     old_cnf_name = cnf_name
+    orig_cnf_name = cnf_name
+    total_cube = []
     while not isLeafReached:
         print('\niteration : ' + str(itr))
-        res = find_cube_add_to_cnf(old_cnf_name, itr)
+        res = find_cube_add_to_cnf(op, old_cnf_name, orig_cnf_name, itr)
         cubes_num = res[0]
         new_cnf_name = res[1]
+        print('total cube size : ' + str(len(total_cube)))
         if cubes_num == 0:
             #op.nstep += 50
             #print('nstep increased to : ' + str(op.nstep))
             print('0 cubes. break.')
             break
         else:
+            total_cube.extend(res[2])
             old_cnf_name = new_cnf_name
         itr += 1
+    print('total cube :')
+    print(total_cube)

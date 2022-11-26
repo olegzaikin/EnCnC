@@ -28,7 +28,7 @@ import logging
 import time
 from enum import Enum
 
-version = "1.3.3"
+version = "1.3.5"
 
 SOLVERS = ['kissat_sc2021']
 
@@ -111,7 +111,7 @@ def print_usage():
 
 # Kill unuseful processes after script termination:
 def kill_unuseful_processes(la_solver : str):
-	sys_str = 'killall -9 ' + op.la_solver
+	sys_str = 'killall -9 ' + la_solver
 	o = os.popen(sys_str).read()
 	sys_str = 'killall -9 timelimit'
 	o = os.popen(sys_str).read()
@@ -452,7 +452,7 @@ if __name__ == '__main__':
 	pool2.join()
 
 	# Kill remaining processes if any:
-	kill_unuseful_processes()
+	kill_unuseful_processes(op.la_solver)
 	for solver in SOLVERS:
 		kill_solver(solver)
 
