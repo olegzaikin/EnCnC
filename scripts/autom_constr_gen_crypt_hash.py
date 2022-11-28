@@ -14,7 +14,7 @@ import os
 from enum import Enum
 import find_cnc_threshold as FindCncTr
 
-version = '0.0.3'
+version = '0.0.4'
 script_name = 'autom_constr_gen_crypt_hash.py'
 
 MARCH_NAME = 'march_cu'
