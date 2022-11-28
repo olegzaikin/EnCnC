@@ -14,7 +14,7 @@ import os
 from enum import Enum
 import find_cnc_threshold as FindCncTr
 
-version = '0.0.4'
+version = '0.0.5'
 script_name = 'autom_constr_gen_crypt_hash.py'
 
 MARCH_NAME = 'march_cu'
@@ -173,7 +173,8 @@ if __name__ == '__main__':
       cubetype_full_name += '-seed=' + str(op.seed)
 
     # Add all variants of partial total cubes to original CNF:
-    for i in range(len(total_cube),0,-1):
+    downto = len(total_cube)-50 if len(total_cube) > 50 else 0
+    for i in range(len(total_cube), downto, -1):
       partial_total_cube_cnf_name = orig_cnf_name.split('.cnf')[0] +\
       '_' + cubetype_full_name + '_' + str(i) + 'knownliterals' + '.cnf'
       #print(partial_total_cube_cnf_name)
