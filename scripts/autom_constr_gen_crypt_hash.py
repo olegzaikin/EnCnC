@@ -14,7 +14,7 @@ import os
 from enum import Enum
 import find_cnc_threshold as FindCncTr
 
-version = '0.0.2'
+version = '0.0.3'
 script_name = 'autom_constr_gen_crypt_hash.py'
 
 MARCH_NAME = 'march_cu'
@@ -91,7 +91,7 @@ def get_march_free_vars_num(cnf_name : str):
       return int(line.split('c number of free variables = ')[1])
   return -1
 
-def find_cube_add_to_cnf(op, cnf_name : str, orig_cnf_name : str, itr : int):
+def find_cube_add_to_cnf(op : Options, cnf_name : str, orig_cnf_name : str, itr : int):
     print('cnf name : ' + cnf_name)
     free_vars_num = get_march_free_vars_num(cnf_name)
     assert(free_vars_num > 0)
@@ -118,7 +118,11 @@ def find_cube_add_to_cnf(op, cnf_name : str, orig_cnf_name : str, itr : int):
         cube = cubes[-1]
     print('chosen cube : ')
     print(cube)
-    iter_cnf_name = orig_cnf_name.split('.cnf')[0] + '_' + op.cubetype.name + '_iter' + str(itr) + '.cnf'
+    cubetype_full_name = op.cubetype.name
+    if (op.cubetype.name == 'random'):
+      cubetype_full_name += '-seed=' + str(op.seed)
+    iter_cnf_name = orig_cnf_name.split('.cnf')[0] + '_' + cubetype_full_name +\
+    '_iter' + str(itr) + '.cnf'
     FindCncTr.add_cube(cnf_name, iter_cnf_name, cube)
     return cubes_num, iter_cnf_name, cube
 
