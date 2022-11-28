@@ -19,6 +19,7 @@ script_name = 'autom_constr_gen_crypt_hash.py'
 
 MARCH_NAME = 'march_cu'
 CADICAL_NAME = 'cadical_1.5'
+TMP_CUBES_FILE_NAME = 'tmp_cubes'
 
 class CubeType(Enum):
     first = 1
@@ -98,12 +99,11 @@ def find_cube_add_to_cnf(op : Options, cnf_name : str, orig_cnf_name : str, itr 
     print('free_vars_num : ' + str(free_vars_num))
     cutoff_threshold = free_vars_num - op.nstep
     print('cutoff_threshold : ' + str(cutoff_threshold))
-    cubes_name = 'tmp_cubes'
     march_sys_str = MARCH_NAME + ' ' + cnf_name + ' -n ' +\
-        str(cutoff_threshold) + ' -o ' + cubes_name
+        str(cutoff_threshold) + ' -o ' + TMP_CUBES_FILE_NAME
     print(march_sys_str)
     o = os.popen(march_sys_str).read()
-    cubes = read_cubes(cubes_name)
+    cubes = read_cubes(TMP_CUBES_FILE_NAME)
     cubes_num = len(cubes)
     print(str(cubes_num) + ' cubes')
     if cubes_num == 0:
@@ -125,6 +125,11 @@ def find_cube_add_to_cnf(op : Options, cnf_name : str, orig_cnf_name : str, itr 
     '_iter' + str(itr) + '.cnf'
     FindCncTr.add_cube(cnf_name, iter_cnf_name, cube)
     return cubes_num, iter_cnf_name, cube
+
+# Remove file:
+def remove_file(file_name):
+	sys_str = 'rm -f ' + file_name
+	o = os.popen(sys_str).read()
 
 # Main function:
 if __name__ == '__main__':
@@ -150,9 +155,9 @@ if __name__ == '__main__':
         cubes_num = res[0]
         new_cnf_name = res[1]
         print('total cube size : ' + str(len(total_cube)))
+        if old_cnf_name != orig_cnf_name:
+            remove_file(old_cnf_name)
         if cubes_num == 0:
-            #op.nstep += 50
-            #print('nstep increased to : ' + str(op.nstep))
             print('0 cubes. break.')
             break
         else:
@@ -161,3 +166,15 @@ if __name__ == '__main__':
         itr += 1
     print('total cube :')
     print(total_cube)
+    remove_file(TMP_CUBES_FILE_NAME)
+
+    cubetype_full_name = op.cubetype.name
+    if (op.cubetype.name == 'random'):
+      cubetype_full_name += '-seed=' + str(op.seed)
+
+    # Add all variants of partial total cubes to original CNF:
+    for i in range(len(total_cube),0,-1):
+      partial_total_cube_cnf_name = orig_cnf_name.split('.cnf')[0] +\
+      '_' + cubetype_full_name + '_' + str(i) + 'knownliterals' + '.cnf'
+      #print(partial_total_cube_cnf_name)
+      FindCncTr.add_cube(orig_cnf_name, partial_total_cube_cnf_name, total_cube[:i])
