@@ -28,7 +28,7 @@ import logging
 import time
 from enum import Enum
 
-version = "1.3.5"
+version = "1.3.6"
 
 SOLVERS = ['kissat_sc2021']
 
@@ -129,21 +129,15 @@ def remove_file(file_name):
 	sys_str = 'rm -f ' + file_name
 	o = os.popen(sys_str).read()
 
-# Find the number of free variables:
-def get_free_vars_num(cnf_name):
-	free_vars = set()
-	with open(cnf_name) as cnf:
-		for line in cnf:
-			if line[0] == 'p' or line[0] == 'c':
-				continue
-			lst = line.split(' ')
-			for x in lst:
-				if x == ' ' or x == '':
-					continue
-				var = abs(int(x))
-				if var != 0 and var not in free_vars:
-					free_vars.add(var)
-	return len(free_vars)
+# Read free vars counted by march (they are different from the number of all variables):
+def get_march_free_vars_num(la_solver : str, cnf_name : str):
+  sys_str = la_solver + ' ' + cnf_name + ' -d 1'
+  o = os.popen(sys_str).read()
+  lines = o.split('\n')
+  for line in lines:
+    if 'c number of free variables = ' in line:
+      return int(line.split('c number of free variables = ')[1])
+  return -1
 
 # Parse lookahead solver's log:
 def parse_cubing_log(o):
@@ -347,7 +341,7 @@ if __name__ == '__main__':
 	start_time = time.time()
 
 	# Count free variables:
-	free_vars_num = get_free_vars_num(cnf_name)
+	free_vars_num = get_march_free_vars_num(op.la_solver, cnf_name)
 	logging.info('free vars : %d' % free_vars_num)
 	n = free_vars_num
 	while n % op.nstep != 0 and n > 0:
