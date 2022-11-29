@@ -28,7 +28,7 @@ import logging
 import time
 from enum import Enum
 
-version = "1.3.6"
+version = "1.3.7"
 
 SOLVERS = ['kissat_sc2021']
 
@@ -45,7 +45,7 @@ class Options:
 	max_script_time = 864000
 	nstep = 10
 	stop_sat = False
-	stop_time = False
+	stop_time = True
 	seed = 0
 	def __init__(self):
 		self.seed = round(time.time() * 1000)
