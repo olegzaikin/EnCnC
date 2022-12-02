@@ -28,9 +28,9 @@ import logging
 import time
 from enum import Enum
 
-version = "1.3.7"
+version = "1.3.8"
 
-SOLVERS = ['kissat_sc2021']
+SOLVERS = ['kissat_3.0.0']
 
 # Input options:
 class Options:
