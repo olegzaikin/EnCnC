@@ -17,6 +17,10 @@
 #  problem.cnf    : CNF.
 #  --stop_sat     : if a satisfying assignment is found, stop script.
 #==============================================================================
+#
+# TODO:
+# 0. Single CDCL solver.
+# 1. Calculate estimation after processing samples.
 
 import sys
 import os
@@ -28,13 +32,12 @@ import logging
 import time
 from enum import Enum
 
-version = "1.3.8"
-
-SOLVERS = ['kissat_3.0.0']
+version = "1.3.9"
 
 # Input options:
 class Options:
 	la_solver = 'march_cu'
+	cdcl_solver = 'kissat_3.0.0'
 	sample_size = 1000
 	min_cubes = 10000
 	max_cubes = 1000000
@@ -51,6 +54,7 @@ class Options:
 		self.seed = round(time.time() * 1000)
 	def __str__(self):
 		return 'la_solver : ' + str(self.la_solver) + '\n' +\
+                'cdcl_solver : ' + str(self.cdcl_solver) + '\n' +\
 		'sample_size : ' + str(self.sample_size) + '\n' +\
 		'min_cubes : ' + str(self.min_cubes) + '\n' +\
 		'max_cubes : ' + str(self.max_cubes) + '\n' +\
@@ -67,6 +71,8 @@ class Options:
 		for p in argv:
 			if '-la_solver=' in p:
 				self.la_solver = p.split('-la_solver=')[1]
+			if '-cdcl_solver=' in p:
+				self.cdcl_solver = p.split('-cdcl_solver=')[1]
 			if '-sample=' in p:
 				self.sample_size = int(p.split('-sample=')[1])
 			if '-minc=' in p:
@@ -95,19 +101,20 @@ class Options:
 def print_usage():
 	print('Usage : script cnf-name [options]')
 	print('options :\n' +\
-	'-la_solver=<str> - (default : march_cu) lookahead solver' + '\n' +\
-	'-sample=<int>    - (default : 1000)     random sample size' + '\n' +\
-	'-minc=<int>      - (default : 10000)    minimal number of cubes' + '\n' +\
-	'-maxc=<int>      - (default : 1000000)  maximal number of cubes' + '\n' +\
-	'-maxcpar=<int>   - (default : 1000000)  maximal number of cubes processed in parallel' + '\n' +\
-	'-minref=<int>    - (default : 1000)     minimal number of refuted leaves' + '\n' +\
-	'-maxlat=<int>    - (default : 86400)    time limit in seconds for lookahead solver' + '\n' +\
-	'-maxcdclt=<int>  - (default : 5000)     time limit in seconds for CDCL solver' + '\n' +\
-	'-maxt=<int>      - (default : 864000)   script time limit in seconds' + '\n' +\
-	'-nstep=<int>     - (default : 10)       step for decreasing threshold n for lookahead solver' + '\n' +\
-	'-seed=<int>      - (default : time)     seed for pseudorandom generator' + '\n' +\
-	'--stop_time      - (default : False)    stop if CDCL solver is interrupted' + '\n' +\
-	'--stop_sat       - (default : False)    stop if a satisfying assignment is found' + '\n')
+	'-la_solver=<str>   - (default : march_cu) lookahead solver' + '\n' +\
+	'-cdcl_solver=<str> - (default : kissat)   cdcl solver' + '\n' +\
+	'-sample=<int>      - (default : 1000)     random sample size' + '\n' +\
+	'-minc=<int>        - (default : 10000)    minimal number of cubes' + '\n' +\
+	'-maxc=<int>        - (default : 1000000)  maximal number of cubes' + '\n' +\
+	'-maxcpar=<int>     - (default : 1000000)  maximal number of cubes processed in parallel' + '\n' +\
+	'-minref=<int>      - (default : 1000)     minimal number of refuted leaves' + '\n' +\
+	'-maxlat=<int>      - (default : 86400)    time limit in seconds for lookahead solver' + '\n' +\
+	'-maxcdclt=<int>    - (default : 5000)     time limit in seconds for CDCL solver' + '\n' +\
+	'-maxt=<int>        - (default : 864000)   script time limit in seconds' + '\n' +\
+	'-nstep=<int>       - (default : 10)       step for decreasing threshold n for lookahead solver' + '\n' +\
+	'-seed=<int>        - (default : time)     seed for pseudorandom generator' + '\n' +\
+	'--stop_time        - (default : False)    stop if CDCL solver is interrupted' + '\n' +\
+	'--stop_sat         - (default : False)    stop if a satisfying assignment is found' + '\n')
 
 # Kill unuseful processes after script termination:
 def kill_unuseful_processes(la_solver : str):
@@ -411,7 +418,9 @@ if __name__ == '__main__':
 		logging.info('random_cubes size : %d' % len(random_cubes))
 		results[n] = []
 		task_index = 0
-		for solver in SOLVERS:
+                
+		solvers = [op.cdcl_solver]
+		for solver in solvers:
 			if isExit:
 				break
 			if solver in stopped_solvers:
@@ -438,7 +447,7 @@ if __name__ == '__main__':
 		elapsed_time = time.time() - start_time
 		logging.info('elapsed_time : ' + str(elapsed_time) + '\n')
 
-		if len(stopped_solvers) == len(SOLVERS):
+		if len(stopped_solvers) == len(solvers):
 			logging.info('stop main loop')
 			break
 
@@ -447,7 +456,7 @@ if __name__ == '__main__':
 
 	# Kill remaining processes if any:
 	kill_unuseful_processes(op.la_solver)
-	for solver in SOLVERS:
+	for solver in solvers:
 		kill_solver(solver)
 
 	# Write results:
