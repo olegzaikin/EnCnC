@@ -14,7 +14,7 @@ import os
 from enum import Enum
 import find_cnc_threshold as FindCncTr
 
-version = '0.0.6'
+version = '0.0.7'
 script_name = 'autom_constr_gen_crypt_hash.py'
 
 MARCH_NAME = 'march_cu'
@@ -177,7 +177,7 @@ if __name__ == '__main__':
             total_cube.extend(res[2])
             old_cnf_name = new_cnf_name
         itr += 1
-    print('total cube size : ' + len(total_cube))
+    print('total cube size : ' + str(len(total_cube)))
     print('total cube :')
     print(total_cube)
     remove_file(TMP_CUBES_FILE_NAME)
