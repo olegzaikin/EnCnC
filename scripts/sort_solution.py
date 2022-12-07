@@ -19,16 +19,28 @@
 import sys
 import binascii
 
+script_name = 'sort_solution.py'
+version = '0.0.2'
+
 KNOWN_VARS_NUM = 512 
 
 if len(sys.argv) < 3:
-	print('Usage: cnf solution')
+	print('Usage: cnf solution [input_vars]')
 	exit(1)
 
 cnfname = sys.argv[1]
 solname = sys.argv[2]
 print('solname : ' + solname)
 print('cnfname : ' + cnfname)
+if len(sys.argv) == 4:
+    inputvarsname = sys.argv[3]
+    print('inputvarsname : ' + inputvarsname)
+    with open(inputvarsname, 'r') as ifile:
+        line = ifile.read()
+        input_vars = [int(x) for x in line.split(' ')]
+else:
+    input_vars = [i+1 for i in range(KNOWN_VARS_NUM)]
+
 literals = []
 with open(solname, 'r') as f:
 	lines = f.readlines()
@@ -49,15 +61,17 @@ s = ''
 for lit in literals:
 	s += str(lit) + ' '
 
+# Collect 16 input words in binary form:
 input_bits = ['']
 k = 0	
-for lit in literals:
+#for lit in literals:
+for var in input_vars:
 	if len(input_bits[k]) == 32:
 	    k += 1
 	    if k == 16:
 		    break
 	    input_bits.append('')
-	input_bits[k] += '0' if lit < 0 else '1'
+	input_bits[k] += '0' if literals[var-1] < 0 else '1'
 
 print(s)
 print('\n')
