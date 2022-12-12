@@ -20,7 +20,7 @@ import sys
 import binascii
 
 script_name = 'sort_solution.py'
-version = '0.0.2'
+version = '0.0.3'
 
 KNOWN_VARS_NUM = 512 
 
@@ -43,13 +43,17 @@ else:
 
 literals = []
 with open(solname, 'r') as f:
-	lines = f.readlines()
+	lines = f.read().splitlines()
 	for line in lines:
 		if line == '' or line[0] == 's':
 			continue
-		val = int(line.split(' ')[1])
-		if val != 0:
-		    literals.append(val)
+		if line[:2] == 'v ':
+			s = line[2:]
+			assert(len(s) > 0)
+			lst = s.split(' ')
+			for x in lst:
+				if x != '0':
+					literals.append(int(x))
 
 literals = sorted(literals, key=abs)
 #print(literals)
@@ -102,7 +106,7 @@ with open(cnfname, 'r') as f:
 
 with open(cnfname.split('.cnf')[0] + '_known' + str(KNOWN_VARS_NUM) + '.cnf', 'w') as f:
 	f.write('p cnf %d %d\n' % (vars_num, clauses_num + KNOWN_VARS_NUM))
-	for i in range(KNOWN_VARS_NUM):
-		f.write(str(literals[i]) + ' 0\n')
+	for var in input_vars:
+		f.write(str(literals[var-1]) + ' 0\n')
 	for c in clauses:
 		f.write(c + '\n')
