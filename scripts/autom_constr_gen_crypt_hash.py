@@ -11,15 +11,15 @@ import multiprocessing as mp
 import time
 import random
 import os
+import logging
 from enum import Enum
 import find_cnc_threshold as FindCncTr
 
-version = '0.0.7'
+version = '0.0.8'
 script_name = 'autom_constr_gen_crypt_hash.py'
 
-MARCH_NAME = 'march_cu'
-CADICAL_NAME = 'cadical_1.5'
-TMP_CUBES_FILE_NAME = 'tmp_cubes'
+MARCH = 'march_cu'
+CDCL_SOLVER = 'kissat_3.0.0'
 
 class CubeType(Enum):
     first = 1
@@ -29,16 +29,16 @@ class CubeType(Enum):
 # Input options:
 class Options:
   cubetype = CubeType.first # first, random or last cube
-  nstep = 100 # decrease step for the cutoff threshold
-  cpunum = 1 # CPU cores
-  seed = 0
-  verb = 1
-  def __init__(self):
-    self.seed = round(time.time() * 1000)
+  nstep = 50                # decrease step for the cutoff threshold
+  maxconfl = 100000000      # Maximal number of conflicts by CDCL solver
+  seed = 0                  # random seed
+  verb = 0                  # verbosity
+  #def __init__(self):
+  #  self.seed = round(time.time() * 1000)
   def __str__(self):
     return 'cube type : ' + str(self.cubetype.name) + '\n' +\
     'nstep : ' + str(self.nstep) + '\n' +\
-    'cpunum : ' + str(self.cpunum) + '\n' +\
+    'maxconflicts : ' + str(self.maxconfl) + '\n' +\
     'seed : ' + str(self.seed) + '\n'
   def read(self, argv) :
     for p in argv:
@@ -55,22 +55,21 @@ class Options:
           exit(1)
       if '-nstep=' in p:
         self.nstep = int(p.split('-nstep=')[1])
-      if '-cpunum=' in p:
-        self.cpunum = p.split('-cpunum=')[1]
+      if '-maxconfl=' in p:
+        self.maxconfl = int(p.split('-maxconfl=')[1])
       if '-seed=' in p:
         self.seed = int(p.split('-seed=')[1])
       if '-verb=' in p:
         self.verb = int(p.split('-verb=')[1])
 
-
 def print_usage():
 	print('Usage : ' + script_name + ' CNF [options]')
 	print('options :\n' +\
-	'-cubetype=<str> - (default : first) which cube to choose : first, random, or last' + '\n' +\
-	'-nstep=<int>    - (default : 100)   step for decreasing threshold n for lookahead solver' + '\n' +\
-        '-cpunum=<int>   - (default : 1)     CPU cores' + '\n' +\
-        '-seed=<int>     - (default : time)  seed for pseudorandom generator' + '\n' +\
-        '-verb=<int>     - (default : 1)     verbose level')
+	'-cubetype=<str> - (default : first)   which cube to choose : first, random, or last' + '\n' +\
+	'-nstep=<int>    - (default : 50)      step for decreasing threshold n for lookahead solver' + '\n' +\
+  '-maxconfl=<int> - (default : 100 million)   limit on number of conflicts for CDCL solver' + '\n' +\
+  '-seed=<int>     - (default : time)    seed for pseudorandom generator' + '\n' +\
+  '-verb=<int>     - (default : 1)       verbose level')
 
 # Read cubes from file:
 def read_cubes(cubes_name : str):
@@ -89,7 +88,7 @@ def read_cubes(cubes_name : str):
 
 # Read free vars counted by march (they are different from the number of all variables):
 def get_march_free_vars_num(cnf_name : str):
-  sys_str = MARCH_NAME + ' ' + cnf_name + ' -d 1'
+  sys_str = MARCH + ' ' + cnf_name + ' -d 1'
   o = os.popen(sys_str).read()
   lines = o.split('\n')
   for line in lines:
@@ -97,6 +96,7 @@ def get_march_free_vars_num(cnf_name : str):
       return int(line.split('c number of free variables = ')[1])
   return -1
 
+# Generate cubes by lookahead, choose one cube and add it to a given CNF:
 def find_cube_add_to_cnf(op : Options, cnf_name : str, orig_cnf_name : str, itr : int, verb : int):
     if verb:
         print('cnf name : ' + cnf_name)
@@ -105,13 +105,14 @@ def find_cube_add_to_cnf(op : Options, cnf_name : str, orig_cnf_name : str, itr 
     if verb:
         print('free_vars_num : ' + str(free_vars_num))
     cutoff_threshold = free_vars_num - op.nstep
-    print('n : ' + str(cutoff_threshold))
-    march_sys_str = MARCH_NAME + ' ' + cnf_name + ' -n ' +\
-        str(cutoff_threshold) + ' -o ' + TMP_CUBES_FILE_NAME
+    tmp_cubes_file_name ='tmp_cubes_' + cnf_name.replace('./','').replace('.cnf','')
+    march_sys_str = MARCH + ' ' + cnf_name + ' -n ' +\
+        str(cutoff_threshold) + ' -o ' + tmp_cubes_file_name 
     if verb:
         print(march_sys_str)
     o = os.popen(march_sys_str).read()
-    cubes = read_cubes(TMP_CUBES_FILE_NAME)
+    cubes = read_cubes(tmp_cubes_file_name)
+    remove_file(tmp_cubes_file_name)
     cubes_num = len(cubes)
     if verb:
         print(str(cubes_num) + ' cubes')
@@ -134,12 +135,26 @@ def find_cube_add_to_cnf(op : Options, cnf_name : str, orig_cnf_name : str, itr 
     iter_cnf_name = orig_cnf_name.split('.cnf')[0] + '_' + cubetype_full_name +\
     '_iter' + str(itr) + '.cnf'
     FindCncTr.add_cube(cnf_name, iter_cnf_name, cube)
-    return cubes_num, iter_cnf_name, cube
+    return cubes_num, iter_cnf_name, cube, cutoff_threshold
 
 # Remove file:
 def remove_file(file_name):
 	sys_str = 'rm -f ' + file_name
 	o = os.popen(sys_str).read()
+
+def parse_cdcl_result(o):
+	res = 'UNKNOWN'
+	lines = o.split('\n')
+	for line in lines:
+		if len(line) < 12:
+			continue
+		if 's SATISFIABLE' in line:
+			res = 'SAT'
+			break
+		elif 's UNSATISFIABLE' in line:
+			res = 'UNSAT'
+			break
+	return res
 
 # Main function:
 if __name__ == '__main__':
@@ -154,15 +169,22 @@ if __name__ == '__main__':
 
     random.seed(op.seed)
 
-    isLeafReached = False 
+    log_name = './log_' + cnf_name.replace('./','').replace('.cnf','') + '_' + \
+    op.cubetype.name + '_seed=' + str(op.seed)
+    print('log_name : ' + log_name)
+    logging.basicConfig(filename=log_name, filemode = 'w', level=logging.INFO)
+
+    logging.info('CNF : ' + cnf_name)
+    logging.info(str(op))
+
     itr = 0
     old_cnf_name = cnf_name
     orig_cnf_name = cnf_name
     total_cube = []
-    while not isLeafReached:
+    while True:
         if op.verb:
             print('\n')
-        print('iteration : ' + str(itr), end = ' ')
+        s = 'iteration : ' + str(itr)
         res = find_cube_add_to_cnf(op, old_cnf_name, orig_cnf_name, itr, op.verb)
         cubes_num = res[0]
         new_cnf_name = res[1]
@@ -172,24 +194,47 @@ if __name__ == '__main__':
             remove_file(old_cnf_name)
         if cubes_num == 0:
             print('0 cubes. break.')
+            logging.info('0 cubes. break.')
             break
         else:
             total_cube.extend(res[2])
             old_cnf_name = new_cnf_name
+        s += ', n : ' + str(res[3])
+        print(s)
+        logging.info(s)
         itr += 1
     print('total cube size : ' + str(len(total_cube)))
+    logging.info('total cube size : ' + str(len(total_cube)))
     print('total cube :')
+    logging.info('Total cube :')
     print(total_cube)
-    remove_file(TMP_CUBES_FILE_NAME)
+    logging.info(total_cube)
+    logging.info('')
 
     cubetype_full_name = op.cubetype.name
     if (op.cubetype.name == 'random'):
       cubetype_full_name += '-seed=' + str(op.seed)
 
-    # Add all variants of partial total cubes to original CNF:
-    downto = len(total_cube)-50 if len(total_cube) > 50 else 0
-    for i in range(len(total_cube), downto, -1):
+    # Generate CNFs by removing literals from the total cube one by one:
+    for i in range(len(total_cube), 0, -1):
       partial_total_cube_cnf_name = orig_cnf_name.split('.cnf')[0] +\
       '_' + cubetype_full_name + '_' + str(i) + 'knownliterals' + '.cnf'
-      #print(partial_total_cube_cnf_name)
+      s = partial_total_cube_cnf_name
       FindCncTr.add_cube(orig_cnf_name, partial_total_cube_cnf_name, total_cube[:i])
+      sys_str = CDCL_SOLVER + ' ' + partial_total_cube_cnf_name + ' ' + '--conflicts=' + str(op.maxconfl)
+      if op.verb:
+        print('\n' + sys_str)
+      t = time.time()
+      cdcl_log = os.popen(sys_str).read()
+      t = float(time.time() - t)
+      cdcl_res = parse_cdcl_result(cdcl_log)
+      isBreak = False
+      if cdcl_res == 'UNSAT':
+        remove_file(partial_total_cube_cnf_name)
+      else:
+        isBreak = True
+      s += ' ' + cdcl_res + ' ' + str(t) + ' seconds'
+      print(s)
+      logging.info(s)
+      if isBreak:
+        break
