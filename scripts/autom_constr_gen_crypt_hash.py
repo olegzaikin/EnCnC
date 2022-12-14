@@ -15,11 +15,12 @@ import logging
 from enum import Enum
 import find_cnc_threshold as FindCncTr
 
-version = '0.0.8'
+version = '0.0.9'
 script_name = 'autom_constr_gen_crypt_hash.py'
 
 MARCH = 'march_cu'
 CDCL_SOLVER = 'kissat_3.0.0'
+CDCL_MIN_CONFL_LIMIT = 10000
 
 class CubeType(Enum):
     first = 1
@@ -105,7 +106,11 @@ def find_cube_add_to_cnf(op : Options, cnf_name : str, orig_cnf_name : str, itr 
     if verb:
         print('free_vars_num : ' + str(free_vars_num))
     cutoff_threshold = free_vars_num - op.nstep
-    tmp_cubes_file_name ='tmp_cubes_' + cnf_name.replace('./','').replace('.cnf','')
+    cubetype_full_name = op.cubetype.name
+    if (op.cubetype.name == 'random'):
+      cubetype_full_name += '-seed=' + str(op.seed)
+    tmp_cubes_file_name ='tmp_cubes_' + \
+    cnf_name.replace('./','').replace('.cnf','') + '_' + cubetype_full_name
     march_sys_str = MARCH + ' ' + cnf_name + ' -n ' +\
         str(cutoff_threshold) + ' -o ' + tmp_cubes_file_name 
     if verb:
@@ -129,9 +134,6 @@ def find_cube_add_to_cnf(op : Options, cnf_name : str, orig_cnf_name : str, itr 
     if verb:
         print('chosen cube : ')
         print(cube)
-    cubetype_full_name = op.cubetype.name
-    if (op.cubetype.name == 'random'):
-      cubetype_full_name += '-seed=' + str(op.seed)
     iter_cnf_name = orig_cnf_name.split('.cnf')[0] + '_' + cubetype_full_name +\
     '_iter' + str(itr) + '.cnf'
     FindCncTr.add_cube(cnf_name, iter_cnf_name, cube)
@@ -155,6 +157,14 @@ def parse_cdcl_result(o):
 			res = 'UNSAT'
 			break
 	return res
+
+def cdcl_call(cnf_name : str, maxconfl : int):
+    sys_str = CDCL_SOLVER + ' ' + cnf_name + ' ' + '--conflicts=' + str(maxconfl)
+    t = time.time()
+    log = os.popen(sys_str).read()
+    t = float(time.time() - t)
+    res = parse_cdcl_result(log)
+    return res, t
 
 # Main function:
 if __name__ == '__main__':
@@ -184,22 +194,35 @@ if __name__ == '__main__':
     while True:
         if op.verb:
             print('\n')
-        s = 'iteration : ' + str(itr)
-        res = find_cube_add_to_cnf(op, old_cnf_name, orig_cnf_name, itr, op.verb)
-        cubes_num = res[0]
+        s = 'iteration : ' + str(itr) + ', '
+        while True:
+            res = find_cube_add_to_cnf(op, old_cnf_name, orig_cnf_name, itr, op.verb)
+            cubes_num = res[0]
+            if cubes_num > 1000 or cubes_num <= 1: # if 0 or 1 cubes, then solved
+                break
+            else:
+                op.nstep += 20
+                print('nstep : ' + str(op.nstep))
+                logging.info('nstep : ' + str(op.nstep))
         new_cnf_name = res[1]
+        s += str(cubes_num) + ' cubes, '
         if op.verb:
             print('total cube size : ' + str(len(total_cube)))
+        r = cdcl_call(new_cnf_name, CDCL_MIN_CONFL_LIMIT)
+        if r[0] in ['SAT', 'UNSAT']:
+            print('Solved ' + new_cnf_name)
+            logging.info('Solved ' + new_cnf_name)
+            break
         if old_cnf_name != orig_cnf_name:
             remove_file(old_cnf_name)
-        if cubes_num == 0:
-            print('0 cubes. break.')
-            logging.info('0 cubes. break.')
+        if cubes_num == 0 or cubes_num == 1:
+            print('0 or 1 cubes. break.')
+            logging.info('0 or 1 cubes. break.')
             break
         else:
             total_cube.extend(res[2])
             old_cnf_name = new_cnf_name
-        s += ', n : ' + str(res[3])
+        s += 'n : ' + str(res[3])
         print(s)
         logging.info(s)
         itr += 1
@@ -221,19 +244,15 @@ if __name__ == '__main__':
       '_' + cubetype_full_name + '_' + str(i) + 'knownliterals' + '.cnf'
       s = partial_total_cube_cnf_name
       FindCncTr.add_cube(orig_cnf_name, partial_total_cube_cnf_name, total_cube[:i])
-      sys_str = CDCL_SOLVER + ' ' + partial_total_cube_cnf_name + ' ' + '--conflicts=' + str(op.maxconfl)
-      if op.verb:
-        print('\n' + sys_str)
-      t = time.time()
-      cdcl_log = os.popen(sys_str).read()
-      t = float(time.time() - t)
-      cdcl_res = parse_cdcl_result(cdcl_log)
+      res = cdcl_call(partial_total_cube_cnf_name, op.maxconfl)
+      cdcl_res = res[0]
+      cdcl_time = res[1]
       isBreak = False
       if cdcl_res == 'UNSAT':
         remove_file(partial_total_cube_cnf_name)
       else:
         isBreak = True
-      s += ' ' + cdcl_res + ' ' + str(t) + ' seconds'
+      s += ' ' + cdcl_res + ' ' + str(cdcl_time) + ' seconds'
       print(s)
       logging.info(s)
       if isBreak:
