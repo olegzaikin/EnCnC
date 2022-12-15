@@ -15,7 +15,7 @@ import logging
 from enum import Enum
 import find_cnc_threshold as FindCncTr
 
-version = '0.1.0'
+version = '0.1.1'
 script_name = 'autom_constr_gen_crypt_hash.py'
 
 MARCH = 'march_cu'
@@ -32,7 +32,7 @@ class CubeType(Enum):
 class Options:
   cubetype = CubeType.first # first, random or last cube
   nstep = 50                # decrease step for the cutoff threshold
-  maxconfl = 100000000      # Maximal number of conflicts by CDCL solver
+  maxconfl = 20000000       # Maximal number of conflicts by CDCL solver
   seed = 0                  # random seed
   verb = 0                  # verbosity
   #def __init__(self):
@@ -67,11 +67,11 @@ class Options:
 def print_usage():
 	print('Usage : ' + script_name + ' CNF [options]')
 	print('options :\n' +\
-	'-cubetype=<str> - (default : first)       which cube to choose : first, random, or last' + '\n' +\
-	'-nstep=<int>    - (default : 50)          step for decreasing threshold n for lookahead solver' + '\n' +\
-  '-maxconfl=<int> - (default : 100 million) limit on number of conflicts for CDCL solver' + '\n' +\
-  '-seed=<int>     - (default : time)        seed for pseudorandom generator' + '\n' +\
-  '-verb=<int>     - (default : 1)           verbose level')
+	'-cubetype=<str> - (default : first)      which cube to choose : first, random, or last' + '\n' +\
+	'-nstep=<int>    - (default : 50)         step for decreasing threshold n for lookahead solver' + '\n' +\
+	'-maxconfl=<int> - (default : 10 million) limit on number of conflicts for CDCL solver' + '\n' +\
+	'-seed=<int>     - (default : time)       seed for pseudorandom generator' + '\n' +\
+	'-verb=<int>     - (default : 1)          verbose level')
 
 # Read cubes from file:
 def read_cubes(cubes_name : str):
@@ -206,7 +206,7 @@ if __name__ == '__main__':
     '_iter' + str(itr) + '.cnf'
     simplify(cnf_name, cur_cnf_name)
     total_cube = []
-    iteration_cnfs = []
+    iteration_cnfs = [cur_cnf_name]
 
     while True:
         itr += 1
@@ -250,12 +250,6 @@ if __name__ == '__main__':
     logging.info('')
 
     iteration_cnfs.reverse()
-    #print('Iteration CNFS:')
-    #print(iteration_cnfs)
-    #print('')
-    #logging.info('Iteration CNFS:')
-    #logging.info(iteration_cnfs)
-    #logging.info('')
 
     # Solve CNFs by a CDCL solver:
     for cnf_name in iteration_cnfs:
@@ -265,9 +259,10 @@ if __name__ == '__main__':
       cdcl_res = res[0]
       cdcl_time = res[1]
       isBreak = False
-      if cdcl_res == 'UNSAT':
-        remove_file(cnf_name)
-      else:
+      #if cdcl_res == 'UNSAT':
+      #    remove_file(cnf_name)
+      #else:
+      if cdcl_res == 'SAT':
         isBreak = True
       s += ' ' + cdcl_res + ' ' + str(cdcl_time) + ' seconds'
       print(s)
