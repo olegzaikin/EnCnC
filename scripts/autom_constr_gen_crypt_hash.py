@@ -238,6 +238,8 @@ if __name__ == '__main__':
     cur_cnf_name = simpl_cnf_name
     total_cube = []
 
+    isBreak = False
+    s0 = ''
     while True:
         if op.verb:
             print('\n')
@@ -248,16 +250,17 @@ if __name__ == '__main__':
         cubes_num = res[0]
         new_cnf_name = res[1]
         cube = res[2]
+        s += ', n=' + str(res[3]) + ', ' + str(cubes_num) + ' cubes'
+        if op.verb:
+            print(new_cnf_name + ' , ' + str(get_march_free_vars_num(new_cnf_name)) + ' vars before simpl')
+            #o = os.popen('cp ' + new_cnf_name + ' ' + new_cnf_name + '_').read()            
         r = simplify(new_cnf_name, new_cnf_name, op.maxconflsimpl)
         if r[0] in ['SAT', 'UNSAT']:
             s0 = 'Solved ' + new_cnf_name + ' ' + r[0] + ' ' + str(r[1]) + ' seconds'
-            print(s0)
-            logging.info(s0)
-            break
+            isBreak = True
         else:
             # Save a CNF for further processing:
             iteration_cnfs.append(new_cnf_name)
-        s += ', n=' + str(res[3]) + ', ' + str(cubes_num) + ' cubes'
         if op.verb:
             print('total cube size : ' + str(len(total_cube)))
         #if cur_cnf_name != orig_cnf_name:
@@ -265,12 +268,17 @@ if __name__ == '__main__':
         if cubes_num == 0 or cubes_num == 1:
             print('0 or 1 cubes. break.')
             logging.info('0 or 1 cubes. break.')
-            break
+            isBreak = True
         else:
             total_cube.extend(cube)
             cur_cnf_name = new_cnf_name
         print(s)
         logging.info(s)
+        if s0 != '':
+            print(s0)
+            logging.info(s0)
+        if isBreak:
+            break
         itr += 1
 
     remove_file(simpl_cnf_name)
