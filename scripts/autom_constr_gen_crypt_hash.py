@@ -15,7 +15,7 @@ import logging
 from enum import Enum
 import find_cnc_threshold as FindCncTr
 
-version = '0.1.2'
+version = '0.1.3'
 script_name = 'autom_constr_gen_crypt_hash.py'
 
 MARCH = 'march_cu'
@@ -228,11 +228,14 @@ if __name__ == '__main__':
     '_simpl.cnf'
     res = simplify(orig_cnf_name, simpl_cnf_name, op.maxconflsimpl)
     s = 'Simplified CNF, ' + str(get_march_free_vars_num(simpl_cnf_name)) + ' vars'
+    isExit = False
     if res[0] in ['SAT', 'UNSAT']:
-      s += '\n' + res[0]
-      exit(1)
+      s += '\n' + res[0] + ' ' + str(round(res[1], 2)) + ' seconds'
+      isExit = True
     print(s)
     logging.info(s)
+    if isExit:
+        exit(1)
     iteration_cnfs = []
     itr = 0
     cur_cnf_name = simpl_cnf_name
