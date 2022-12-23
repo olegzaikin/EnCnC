@@ -19,8 +19,7 @@
 #==============================================================================
 #
 # TODO:
-# 0. Single CDCL solver.
-# 1. Calculate estimation after processing samples.
+# 0. Calculate estimation after processing samples.
 
 import sys
 import os
@@ -32,12 +31,12 @@ import logging
 import time
 from enum import Enum
 
-version = "1.4.0"
+version = "1.4.1"
 
 # Input options:
 class Options:
 	la_solver = 'march_cu'
-	cdcl_solver = 'kissat_3.0.0'
+	cdcl_solvers = ['kissat_3.0.0']
 	sample_size = 1000
 	min_cubes = 10000
 	max_cubes = 2000000
@@ -54,8 +53,11 @@ class Options:
 	def __init__(self):
 		self.seed = round(time.time() * 1000)
 	def __str__(self):
-		return 'la_solver : ' + str(self.la_solver) + '\n' +\
-                'cdcl_solver : ' + str(self.cdcl_solver) + '\n' +\
+		s = 'la_solver : ' + str(self.la_solver) + '\n' +\
+    'cdcl_solvers : '
+		for solver in self.cdcl_solvers:
+			s += str(solver) + ' '
+		s += '\n' +\
 		'sample_size : ' + str(self.sample_size) + '\n' +\
 		'min_cubes : ' + str(self.min_cubes) + '\n' +\
 		'max_cubes : ' + str(self.max_cubes) + '\n' +\
@@ -69,12 +71,20 @@ class Options:
 		'stop_time : ' + str(self.stop_time) + '\n' +\
 		'cpu_num : ' + str(self.cpu_num) + '\n' +\
 		'seed : ' + str(self.seed) + '\n'
+		return s
 	def read(self, argv) :
 		for p in argv:
-			if '-la_solver=' in p:
-				self.la_solver = p.split('-la_solver=')[1]
-			if '-cdcl_solver=' in p:
-				self.cdcl_solver = p.split('-cdcl_solver=')[1]
+			if '-lasolver=' in p:
+				self.la_solver = p.split('-lasolver=')[1]
+			# Parse comma-separated solvers:
+			if '-cdclsolvers=' in p:
+				if ',' not in p:
+				  self.cdcl_solvers = p.split('-cdclsolvers=')[1]
+				else:
+					self.cdcl_solvers = []
+					word = p.split('-cdclsolvers=')[1]
+					for solver in word.split(','):
+					  self.cdcl_solvers.append(solver)
 			if '-sample=' in p:
 				self.sample_size = int(p.split('-sample=')[1])
 			if '-minc=' in p:
@@ -105,21 +115,21 @@ class Options:
 def print_usage():
 	print('Usage : script cnf-name [options]')
 	print('options :\n' +\
-	'-la_solver=<str>   - (default : march_cu) lookahead solver' + '\n' +\
-	'-cdcl_solver=<str> - (default : kissat)   cdcl solver' + '\n' +\
-	'-sample=<int>      - (default : 1000)     random sample size' + '\n' +\
-	'-minc=<int>        - (default : 10000)    minimal number of cubes' + '\n' +\
-	'-maxc=<int>        - (default : 1000000)  maximal number of cubes' + '\n' +\
-	'-maxcpar=<int>     - (default : 1000000)  maximal number of cubes processed in parallel' + '\n' +\
-	'-minref=<int>      - (default : 1000)     minimal number of refuted leaves' + '\n' +\
-	'-maxlat=<int>      - (default : 86400)    time limit in seconds for lookahead solver' + '\n' +\
-	'-maxcdclt=<int>    - (default : 5000)     time limit in seconds for CDCL solver' + '\n' +\
-	'-maxt=<int>        - (default : 864000)   script time limit in seconds' + '\n' +\
-	'-nstep=<int>       - (default : 10)       step for decreasing threshold n for lookahead solver' + '\n' +\
-	'-cpunum=<int>      - (default : ' + str(mp.cpu_count()) + '        number of used CPU cores' + '\n' +\
-	'-seed=<int>        - (default : time)     seed for pseudorandom generator' + '\n' +\
-	'--stop_time        - (default : False)    stop if CDCL solver is interrupted' + '\n' +\
-	'--stop_sat         - (default : False)    stop if a satisfying assignment is found' + '\n')
+	'-lasolver=<str>     - (default : march_cu) lookahead solver' + '\n' +\
+	'-cdclsolvers=<str>  - (default : kissat3)  comma-separated CDCL solvers' + '\n' +\
+	'-sample=<int>       - (default : 1000)     random sample size' + '\n' +\
+	'-minc=<int>         - (default : 10000)    minimal number of cubes' + '\n' +\
+	'-maxc=<int>         - (default : 1000000)  maximal number of cubes' + '\n' +\
+	'-maxcpar=<int>      - (default : 1000000)  maximal number of cubes processed in parallel' + '\n' +\
+	'-minref=<int>       - (default : 1000)     minimal number of refuted leaves' + '\n' +\
+	'-maxlat=<int>       - (default : 86400)    time limit in seconds for lookahead solver' + '\n' +\
+	'-maxcdclt=<int>     - (default : 5000)     time limit in seconds for CDCL solver' + '\n' +\
+	'-maxt=<int>         - (default : 864000)   script time limit in seconds' + '\n' +\
+	'-nstep=<int>        - (default : 10)       step for decreasing threshold n for lookahead solver' + '\n' +\
+	'-cpunum=<int>       - (default : ' + str(mp.cpu_count()) + '        number of used CPU cores' + '\n' +\
+	'-seed=<int>         - (default : time)     seed for pseudorandom generator' + '\n' +\
+	'--stop_time         - (default : False)    stop if CDCL solver is interrupted' + '\n' +\
+	'--stop_sat          - (default : False)    stop if a satisfying assignment is found' + '\n')
 
 # Kill unuseful processes after script termination:
 def kill_unuseful_processes(la_solver : str):
@@ -434,9 +444,11 @@ if __name__ == '__main__':
 		logging.info('random_cubes size : %d' % len(random_cubes))
 		results[n] = []
 		task_index = 0
-                
-		solvers = [op.cdcl_solver]
+         
+		solvers = op.cdcl_solvers
 		for solver in solvers:
+			print('CDCL solver : ' + solver)
+			logging.info('CDCL solver : ' + solver)
 			if isExit:
 				break
 			if solver in stopped_solvers:

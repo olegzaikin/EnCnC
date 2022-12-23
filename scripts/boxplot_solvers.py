@@ -14,7 +14,7 @@ import sys
 import glob
 import os
 
-version = "0.1.10"
+version = "0.1.11"
 script_name = 'boxplot_solvers.py'
 
 PC_CORES = 12
@@ -31,7 +31,7 @@ solvers_short_names_dict = {'./cnc-cadical.sh' : 'cnc_cad', './cnc-glucose.sh' :
 './cube-glucose-min10sec-cad130.sh' : 'igl-10s', './cube-glucose-min1min-cad130.sh' : 'igl-1m', \
 './cube-glucose-min2min-cad130.sh' : 'igl-2m', './cube-cad130-min10sec-cad130.sh' : 'icad130-10s', \
 './cube-cad130-min1min-cad130.sh' : 'icad130-min1m', './cube-cad130-min2min-cad130.sh' : 'icad130-min2m', \
-'kissat_3.0.0' : 'kissat3', 'cnc_cadical.sh' : 'cnc_cadical'}
+'kissat_3.0.0' : 'kissat3', 'cnc_cadical.sh' : 'cnc_cadical', 'kissat_sc2022-bulky' : 'kissat-bulky'}
 
 def make_medians_upper_whiskers(df):
 	medians = dict()
