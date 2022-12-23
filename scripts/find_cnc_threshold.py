@@ -32,7 +32,7 @@ import logging
 import time
 from enum import Enum
 
-version = "1.3.10"
+version = "1.4.0"
 
 # Input options:
 class Options:
@@ -236,9 +236,10 @@ def process_n(n : int, cnf_name : str, op : Options):
 
 # Collect result for threshold n:
 def collect_n_result(res):
-	global random_cubes_n
-	global exit_cubes_creating
 	global op
+	global random_cubes_n
+	global cubes_num_lst
+	global exit_cubes_creating
 	n = res[0]
 	cubes_num = res[1]
 	refuted_leaves = res[2]
@@ -262,6 +263,8 @@ def collect_n_result(res):
 	if cubes_num > op.max_cubes or cubing_time > op.max_la_time:
 		exit_cubes_creating = True
 		logging.info('exit_cubes_creating : ' + str(exit_cubes_creating))
+	else:
+		cubes_num_lst.append(cubes_num)
 
 # Stop CDCL solver:
 def stop_solver(solver : str, message : str, res=[]):
@@ -368,6 +371,7 @@ if __name__ == '__main__':
 	stat_file.close()
 
 	random_cubes_n = dict()
+	cubes_num_lst = []
 	# Use 1 CPU core if many cubes (too much RAM):
 	if op.max_cubes > op.max_cubes_parallel:
 		pool = mp.Pool(1)
@@ -379,8 +383,16 @@ if __name__ == '__main__':
 		while len(pool._cache) >= op.cpu_num: # wait until any cpu is free
 			time.sleep(2)
 		n -= op.nstep
+		if len(cubes_num_lst) >= 2:
+			next_predicted_cubes_num = int((cubes_num_lst[-1] / cubes_num_lst[-2]) * cubes_num_lst[-1])
+			if next_predicted_cubes_num > op.max_cubes:
+				logging.info('next_predicted_cubes_num : ' + str(next_predicted_cubes_num))
+				logging.info('Do not process the next n')
+				exit_cubes_creating = True
 		if exit_cubes_creating or n <= 0:
 			#pool.terminate()
+			logging.info('Stop cubing phase')
+			print('Stop cubing phase')
 			logging.info('killing unuseful processes')
 			kill_unuseful_processes(op.la_solver)
 			time.sleep(2) # wait for processes' termination
