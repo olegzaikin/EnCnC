@@ -221,6 +221,7 @@ if __name__ == '__main__':
     logging.info('CNF : ' + orig_cnf_name)
     logging.info(str(op))
 
+    total_time = time.time()
     s = 'Original CNF, ' + str(get_march_free_vars_num(orig_cnf_name)) + ' vars'
     print(s)
     # Simplify the original CNF:
@@ -242,6 +243,7 @@ if __name__ == '__main__':
     total_cube = []
 
     isBreak = False
+    isSAT = False
     s0 = ''
     while True:
         if op.verb:
@@ -261,6 +263,12 @@ if __name__ == '__main__':
         if r[0] in ['SAT', 'UNSAT']:
             s0 = 'Solved ' + new_cnf_name + ' ' + r[0] + ' ' + str(r[1]) + ' seconds'
             isBreak = True
+            if r[0] == 'SAT':
+                total_time = float(time.time() - total_time)
+                s0 += '\n total time : ' + str(total_time)
+                print(s0)
+                logging.info(s0)
+                exit(1)
         else:
             # Save a CNF for further processing:
             iteration_cnfs.append(new_cnf_name)
@@ -312,3 +320,8 @@ if __name__ == '__main__':
       logging.info(s)
       if isBreak:
         break
+
+    total_time = float(time.time() - total_time)
+    s = '\n total time : ' + str(total_time)
+    print(s)
+    logging.info(s)

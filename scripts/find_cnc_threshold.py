@@ -32,7 +32,7 @@ import logging
 import time
 from enum import Enum
 
-version = "1.3.9"
+version = "1.3.10"
 
 # Input options:
 class Options:
@@ -40,15 +40,16 @@ class Options:
 	cdcl_solver = 'kissat_3.0.0'
 	sample_size = 1000
 	min_cubes = 10000
-	max_cubes = 1000000
+	max_cubes = 2000000
 	max_cubes_parallel = 10000000
 	min_refuted_leaves = 1000
 	max_la_time = 86400
 	max_cdcl_time = 5000
 	max_script_time = 864000
-	nstep = 10
+	nstep = 5
 	stop_sat = False
 	stop_time = True
+	cpu_num = mp.cpu_count()
 	seed = 0
 	def __init__(self):
 		self.seed = round(time.time() * 1000)
@@ -65,7 +66,8 @@ class Options:
 		'max_script_time : ' + str(self.max_script_time) + '\n' +\
 		'nstep : ' + str(self.nstep) + '\n' +\
 		'stop_sat : ' + str(self.stop_sat) + '\n' +\
-		'stop_time: ' + str(self.stop_time) + '\n' +\
+		'stop_time : ' + str(self.stop_time) + '\n' +\
+		'cpu_num : ' + str(self.cpu_num) + '\n' +\
 		'seed : ' + str(self.seed) + '\n'
 	def read(self, argv) :
 		for p in argv:
@@ -91,6 +93,8 @@ class Options:
 				self.max_script_time = int(p.split('-maxt=')[1])
 			if '-nstep=' in p:
 				self.nstep = int(p.split('-nstep=')[1])
+			if '-cpunum=' in p:
+				self.cpu_num = int(p.split('-cpunum=')[1])
 			if '-seed=' in p:
 				self.seed = int(p.split('-seed=')[1])
 			if p == '--stop_sat':
@@ -112,6 +116,7 @@ def print_usage():
 	'-maxcdclt=<int>    - (default : 5000)     time limit in seconds for CDCL solver' + '\n' +\
 	'-maxt=<int>        - (default : 864000)   script time limit in seconds' + '\n' +\
 	'-nstep=<int>       - (default : 10)       step for decreasing threshold n for lookahead solver' + '\n' +\
+	'-cpunum=<int>      - (default : ' + str(mp.cpu_count()) + '        number of used CPU cores' + '\n' +\
 	'-seed=<int>        - (default : time)     seed for pseudorandom generator' + '\n' +\
 	'--stop_time        - (default : False)    stop if CDCL solver is interrupted' + '\n' +\
 	'--stop_sat         - (default : False)    stop if a satisfying assignment is found' + '\n')
@@ -322,7 +327,6 @@ def collect_cube_solver_result(res):
 
 # Main function:
 if __name__ == '__main__':
-	cpu_number = mp.cpu_count()
 	exit_cubes_creating = False
 
 	if len(sys.argv) < 2:
@@ -341,8 +345,8 @@ if __name__ == '__main__':
 	logging.basicConfig(filename=log_name, filemode = 'w', level=logging.INFO)
 
 	logging.info('cnf : ' + cnf_name)
-	logging.info('total number of processors: %d' % mp.cpu_count())
-	logging.info('cpu_number : %d' % cpu_number)
+	logging.info('total number of CPU cures: %d' % mp.cpu_count())
+	logging.info('used CPU cores : %d' % op.cpu_num)
 	logging.info('Options: \n' + str(op))
 
 	start_time = time.time()
@@ -368,11 +372,11 @@ if __name__ == '__main__':
 	if op.max_cubes > op.max_cubes_parallel:
 		pool = mp.Pool(1)
 	else:
-		pool = mp.Pool(cpu_number)
+		pool = mp.Pool(op.cpu_num)
 	# Find required n and their cubes numbers:
 	while not exit_cubes_creating:
 		pool.apply_async(process_n, args=(n, cnf_name, op), callback=collect_n_result)
-		while len(pool._cache) >= cpu_number: # wait until any cpu is free
+		while len(pool._cache) >= op.cpu_num: # wait until any cpu is free
 			time.sleep(2)
 		n -= op.nstep
 		if exit_cubes_creating or n <= 0:
@@ -389,7 +393,7 @@ if __name__ == '__main__':
 	pool.close()
 	pool.join()
 
-	pool2 = mp.Pool(cpu_number)
+	pool2 = mp.Pool(op.cpu_num)
 
 	# Prepare file for results:
 	sample_name = 'sample_results_' + cnf_name
@@ -428,7 +432,7 @@ if __name__ == '__main__':
 			cube_index = 0
 			exit_solving = False
 			for cube in random_cubes:
-				while len(pool2._cache) >= cpu_number:
+				while len(pool2._cache) >= op.cpu_num:
 					time.sleep(2)
 				# Break if solver becomes a stopped one.
 				if solver in stopped_solvers:
