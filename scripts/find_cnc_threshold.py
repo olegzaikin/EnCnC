@@ -31,7 +31,7 @@ import logging
 import time
 from enum import Enum
 
-version = "1.4.1"
+version = "1.4.2"
 
 # Input options:
 class Options:
@@ -47,7 +47,7 @@ class Options:
 	max_script_time = 864000
 	nstep = 5
 	stop_sat = False
-	stop_time = True
+	stop_time = False
 	cpu_num = mp.cpu_count()
 	seed = 0
 	def __init__(self):
@@ -434,6 +434,8 @@ if __name__ == '__main__':
 	logging.info('processing random samples')
 	logging.info('')
 
+	solvers = op.cdcl_solvers
+
 	stopped_solvers = set()
 	results = dict()
 	isExit = False
@@ -444,8 +446,7 @@ if __name__ == '__main__':
 		logging.info('random_cubes size : %d' % len(random_cubes))
 		results[n] = []
 		task_index = 0
-         
-		solvers = op.cdcl_solvers
+
 		for solver in solvers:
 			print('CDCL solver : ' + solver)
 			logging.info('CDCL solver : ' + solver)
