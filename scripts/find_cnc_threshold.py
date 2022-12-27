@@ -31,7 +31,7 @@ import logging
 import time
 from enum import Enum
 
-version = "1.4.2"
+version = "1.4.3"
 
 # Input options:
 class Options:
@@ -45,7 +45,7 @@ class Options:
 	max_la_time = 86400
 	max_cdcl_time = 5000
 	max_script_time = 864000
-	nstep = 5
+	nstep = 10
 	stop_sat = False
 	stop_time = False
 	cpu_num = mp.cpu_count()
@@ -395,13 +395,16 @@ if __name__ == '__main__':
 		n -= op.nstep
 		if len(cubes_num_lst) >= 2:
 			next_predicted_cubes_num = int((cubes_num_lst[-1] / cubes_num_lst[-2]) * cubes_num_lst[-1])
+			s = 'next_predicted_cubes_num : ' + str(next_predicted_cubes_num)
+			logging.info(s)
+			print(s)
 			if next_predicted_cubes_num > op.max_cubes:
-				logging.info('next_predicted_cubes_num : ' + str(next_predicted_cubes_num))
-				logging.info('Do not process the next n')
+				logging.info('Stop due to high next cubes num')
+				print('Stop due to high next cubes num')
 				exit_cubes_creating = True
 		if exit_cubes_creating or n <= 0:
 			#pool.terminate()
-			logging.info('Stop cubing phase')
+			logging.info('Stop cubing phase. Last cubes nums are ' + str(cubes_num_lst[-2]) + ', ' + str(cubes_num_lst[-1]))
 			print('Stop cubing phase')
 			logging.info('killing unuseful processes')
 			kill_unuseful_processes(op.la_solver)
