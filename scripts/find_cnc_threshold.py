@@ -31,7 +31,7 @@ import logging
 import time
 from enum import Enum
 
-version = "1.4.3"
+version = "1.4.4"
 
 # Input options:
 class Options:
@@ -79,11 +79,13 @@ class Options:
 			# Parse comma-separated solvers:
 			if '-cdclsolvers=' in p:
 				if ',' not in p:
-				  self.cdcl_solvers = p.split('-cdclsolvers=')[1]
+				  self.cdcl_solvers = [p.split('-cdclsolvers=')[1]]
 				else:
 					self.cdcl_solvers = []
 					word = p.split('-cdclsolvers=')[1]
 					for solver in word.split(','):
+					  if solver == '':
+					    continue
 					  self.cdcl_solvers.append(solver)
 			if '-sample=' in p:
 				self.sample_size = int(p.split('-sample=')[1])
