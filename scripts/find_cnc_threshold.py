@@ -31,7 +31,7 @@ import logging
 import time
 from enum import Enum
 
-version = "1.4.4"
+version = "1.4.5"
 
 # Input options:
 class Options:
@@ -396,11 +396,13 @@ if __name__ == '__main__':
 			time.sleep(2)
 		n -= op.nstep
 		if len(cubes_num_lst) >= 2:
-			next_predicted_cubes_num = int((cubes_num_lst[-1] / cubes_num_lst[-2]) * cubes_num_lst[-1])
-			s = 'next_predicted_cubes_num : ' + str(next_predicted_cubes_num)
+			next_predicted_cubes_num = cubes_num_lst[-1] / cubes_num_lst[-2]
+			next_predicted_cubes_num *= cubes_num_lst[-1]
+			s = '2 last cubes_num_lst : ' + str(cubes_num_lst[-2]) + ' , ' + str(cubes_num_lst[-1])
+			s += ' ; next_predicted_cubes_num : ' + str(next_predicted_cubes_num)
 			logging.info(s)
 			print(s)
-			if next_predicted_cubes_num > op.max_cubes:
+			if next_predicted_cubes_num > op.max_cubes or next_predicted_cubes_num <= 0:
 				logging.info('Stop due to high next cubes num')
 				print('Stop due to high next cubes num')
 				exit_cubes_creating = True
