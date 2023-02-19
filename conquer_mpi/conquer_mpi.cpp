@@ -27,7 +27,7 @@
 using namespace std;
 
 string prog = "conquer_mpi";
-string version = "0.1.5";
+string version = "0.1.6";
 
 struct wu
 {
@@ -45,6 +45,10 @@ const int UNSAT = 2;
 const int SAT = 3;
 const int INDET = 4;
 const int REPORT_EVERY_SEC = 100;
+
+bool compare_by_cube_size(const wu &a, const wu &b) {
+	return a.cube.size() > b.cube.size();
+}
 
 void controlProcess(const int corecount, const string cubes_file_name);
 vector<wu> readCubes(const string cubes_file_name);
@@ -185,6 +189,8 @@ void controlProcess(const int corecount, const string cubes_file_name)
 {
 	double start_time = MPI_Wtime();
 	vector<wu> wu_vec = readCubes(cubes_file_name);
+	// Sort cubes by size in descending order:
+	std::stable_sort(wu_vec.begin(), wu_vec.end(), compare_by_cube_size);
 
 	cout << "wu_vec size : " << wu_vec.size() << endl;
 	cout << "first cubes : " << endl;
