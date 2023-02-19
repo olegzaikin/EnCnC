@@ -25,7 +25,7 @@
 
 using namespace std;
 
-string version = "0.1.2";
+string version = "0.1.3";
 
 struct wu
 {
@@ -229,7 +229,13 @@ void controlProcess(const int corecount, const string cubes_file_name)
 		}
 	}
 	inter_cubes_file.close();
-	
+
+	// Delete temporary files:
+	std::string system_str = "rm ./id-*";
+	exec(system_str);
+	system_str = "rm ./out_process_*";
+	exec(system_str);
+
 	if (is_SAT) {
 		MPI_Abort(MPI_COMM_WORLD, 0);
 		exit(1);
@@ -454,7 +460,7 @@ void computingProcess(const int rank, const string solver_file_name, const strin
 			exec(system_str);
 		}
 		else {
-			system_str = "rm ./*id-" + wu_id_str + "-*";
+			system_str = "rm ./id-" + wu_id_str + "-*";
 			exec(system_str);
 			system_str = "rm " + out_name;
 			exec(system_str);
