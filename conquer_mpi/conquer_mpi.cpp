@@ -20,12 +20,14 @@
 #include <sstream>
 #include <vector>
 #include <algorithm>
+#include <cassert>
 
 #pragma warning(disable : 4996)
 
 using namespace std;
 
-string version = "0.1.3";
+string prog = "conquer_mpi";
+string version = "0.1.5";
 
 struct wu
 {
@@ -48,12 +50,13 @@ void controlProcess(const int corecount, const string cubes_file_name);
 vector<wu> readCubes(const string cubes_file_name);
 void sendWU(vector<wu> &wu_vec, const int wu_id, const int computing_process_id);
 void computingProcess(const int rank, const string solver_file_name, const string cnf_file_name, 
-					  const string cubes_file_name, const string cube_cpu_lim_str);
+		      const string cubes_file_name, const string cube_cpu_lim_str, const string param_str);
 void writeInfoOutFile(const string control_process_ofile_name, vector<wu> wu_vec, const double start_time);
 int getResultFromFile(const string out_name);
 void writeProcessingInfo(vector<wu> &wu_vec);
 string exec(const string cmd_str);
 string intToStr(const int x);
+string strAfterPrefix(string str, string prefix);
 
 int total_processed_wus = 0;
 
@@ -64,32 +67,69 @@ int main(int argc, char *argv[])
 	MPI_Init(&argc, &argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &corecount);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
-	if (rank == 0)
-		cout << "corecount " << corecount << endl;
 	
+	vector<string> str_argv;
+	for (unsigned i=0; i<argc; ++i)
+		str_argv.push_back(argv[i]);
+	assert((unsigned)argc == str_argv.size());
+
+	if (rank == 0) {
+		cout << "corecount " << corecount << endl;
+		if ( (argc == 2) && 
+		     ((str_argv[1] == "-v") || (str_argv[1] == "--version")) ) {
+		    cout << prog << " of version " << version << endl;
+		    return 1;
+		}
+	}
+
 	if (argc < 5) {
-		cerr << "Usage : prog solver-name cnf-name cubes-name cube-cpu-limit";
+		cerr << "Usage : " << prog << " solver cnf cubes cube-cpu-limit [Options]" << endl;
+		cerr << "  Options:" <<
+		        "    -param=<string> : solver parameters' file name" << endl;
 		return 1;
 	}
-	
-	string solver_file_name = argv[1];
-	string cnf_file_name	= argv[2];
-	string cubes_file_name	= argv[3];
-	string cube_cpu_lim_str = argv[4];
-	
+
+	string solver_file_name = str_argv[1];
+	string cnf_file_name	= str_argv[2];
+	string cubes_file_name	= str_argv[3];
+	string cube_cpu_lim_str = str_argv[4];
+	string param_file_name  = "";
+	// Try to read solver's parameters:
+	if (argc > 5)
+		param_file_name = strAfterPrefix(str_argv[5], "-param=");
+
+	string param_str = "";
+	if (param_file_name != "") {
+		ifstream param_file(param_file_name, ios_base::in);
+		getline(param_file, param_str);
+		param_file.close(); 
+	}
+
 	// control or computing process
 	if (rank == 0) {
 		cout << "solver_file_name : " << solver_file_name << endl;
 		cout << "cnf_file_name    : " << cnf_file_name << endl;
 		cout << "cubes_file_name  : " << cubes_file_name << endl;
 		cout << "cube_cpu_limit   : " << cube_cpu_lim_str << endl;
+		cout << "param_file_name  : " << param_file_name << endl;
+		if (param_file_name != "")
+			cout << "param_str : " << param_str << endl;
+
 		controlProcess(corecount, cubes_file_name);
 	}
 	else
-		computingProcess(rank, solver_file_name, cnf_file_name, cubes_file_name, cube_cpu_lim_str);
-	
+		computingProcess(rank, solver_file_name, cnf_file_name, cubes_file_name, 
+		  cube_cpu_lim_str, param_str);
+
 	return 0;
+}
+
+string strAfterPrefix( string str, string prefix )
+{
+	int found = str.find( prefix );
+	if ( found != -1 )
+		return str.substr( found + prefix.length( ) );
+	return "";
 }
 
 string intToStr(const int x)
@@ -372,8 +412,8 @@ int getResultFromFile(const string out_name)
 	return result;
 }
 
-void computingProcess(const int rank, const string solver_file_name, const string cnf_file_name, 
-					  const string cubes_file_name, const string cube_cpu_lim_str)
+void computingProcess(const int rank, const string solver_file_name, const string cnf_file_name,
+		      const string cubes_file_name, const string cube_cpu_lim_str, const string param_str)
 {
 	vector<wu> wu_vec = readCubes(cubes_file_name);
 	
@@ -433,7 +473,10 @@ void computingProcess(const int rank, const string solver_file_name, const strin
 			system_str = solver_file_name + " " + tmp_cnf_file_name + " " + wu_id_str + " " + cube_cpu_lim_str;
 		}
 		else {
-			system_str = "./timelimit -t " + cube_cpu_lim_str + " -T 1 " + solver_file_name + " " + tmp_cnf_file_name;
+			system_str = "./timelimit -t " + cube_cpu_lim_str + " -T 1 " + solver_file_name;
+			if (param_str != "")
+			    system_str += " " + param_str;
+			system_str += " " + tmp_cnf_file_name;
 		}
 		//if (rank == 1)
 		//	cout << system_str << endl;
