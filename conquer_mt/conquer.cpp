@@ -4,7 +4,7 @@
 //
 // Adds cubes to a CNF, and solves the resulted subproblems by a CDCL solver.
 //
-// Usage : conquer solver-name cnf-name cubes-name cube-time-limit [--verb]
+// Usage : conquer solver cnf cubes cube [Options]
 // By default all threads are used.
 //
 // Example:
@@ -25,7 +25,7 @@
 
 #include <omp.h>
 
-std::string version = "0.2.6";
+std::string version = "0.2.7";
 
 #define cube_t std::vector<int> 
 #define time_point_t std::chrono::time_point<std::chrono::system_clock>
@@ -81,9 +81,9 @@ std::vector<workunit> read_cubes(const std::string cubes_name);
 std::string strAfterPrefix(std::string str, std::string prefix);
 bool compare_by_cube_size(const workunit &a, const workunit &b);
 std::vector<workunit> read_cubes(const std::string cubes_file_name);
-bool solve_cube(const cnf c, const std::string postfix,
-		const std::string solver_name, const std::string cnf_name,
-		const time_point_t program_start,	workunit &wu,
+bool solve_cube(const cnf c, const std::string postfix, const std::string solver_name,
+		const std::string param_str, const std::string cnf_name,
+		const time_point_t program_start, workunit &wu,
 		const unsigned cube_time_lim);
 void write_cubes_info(const std::string postfix,
                       const std::vector<workunit> &wu_vec);
@@ -97,7 +97,8 @@ result read_solver_result(const std::string fname);
 void print_usage() {
 	std::cout << "Usage : conquer solver CNF cubes cube-time-limit [Options]" << std::endl;
 	std::cout << "  Options:" << std::endl
-		  << "    -cpunum=<int> : (default = all cores) CPU cores" << std::endl
+		  << "    -cpunum=<int>   : (default = all cores) CPU cores" << std::endl
+		  << "    -param=<string> : solver's command-line parameters" << std::endl
                   << "    --verb : increase verbosity." << std::endl
 		  << "    --enum : solve all subproblems." << std::endl;
 }
@@ -134,6 +135,7 @@ int main(const int argc, const char *argv[]) {
 	assert(cube_time_lim > 0);
 	bool isEnum = false;
 	unsigned cpunum = 0;
+	std::string param_file_name = "";
 	if (argc > 5) {
 	    for (int i=5; i < argc; ++i) {
 		    if (str_argv[i] == "--verb")
@@ -142,8 +144,8 @@ int main(const int argc, const char *argv[]) {
 			    isEnum = true;
 		    else {
 			std::string s = strAfterPrefix(str_argv[i], "-cpunum=");
-			if (s != "")
-			    std::istringstream(s) >> cpunum;
+			if (s != "") std::istringstream(s) >> cpunum;
+			param_file_name = strAfterPrefix(str_argv[i], "-param=");
 		    }
 	    }
 	}
@@ -151,6 +153,7 @@ int main(const int argc, const char *argv[]) {
 	std::cout << "cnf_name      : " << cnf_name      << std::endl;
 	std::cout << "cubes_name    : " << cubes_name    << std::endl;
 	std::cout << "cube_time_lim : " << cube_time_lim << std::endl;
+	std::cout << "param_f_name  : " << param_file_name << std::endl;
 	std::cout << "cpunum        : " << cpunum        << std::endl;
 	std::cout << "verbosity     : " << verb          << std::endl;
 	std::cout << "enum          : " << isEnum        << std::endl << std::endl;
@@ -173,6 +176,15 @@ int main(const int argc, const char *argv[]) {
 	cnf c(cnf_name);
 	c.print();
 
+	std::string param_str = "";
+	if (param_file_name != "") {
+		std::ifstream param_file(param_file_name, std::ios_base::in);
+		getline(param_file, param_str);
+		param_file.close();
+		std::cout << "param_str : " << param_str << std::endl;
+	}
+
+
 	const std::string postfix = clear_name(solver_name) + "_" + clear_name(cnf_name) +
 	                            "_" + clear_name(cubes_name);
 
@@ -184,7 +196,8 @@ int main(const int argc, const char *argv[]) {
 		    std::cout << "Skip a cube because SAT is found." << std::endl;
 		    continue;
 		}
-		bool res = solve_cube(c, postfix, solver_name, cnf_name, program_start, wu, cube_time_lim);
+		bool res = solve_cube(c, postfix, solver_name, param_str, cnf_name,
+                  program_start, wu, cube_time_lim);
 		solved_cubes++;		
 		if (res) isSAT = true;
 		
@@ -355,9 +368,9 @@ void write_stat(const std::string postfix, const std::vector<workunit> &wu_vec,
 }
 
 bool solve_cube(const cnf c, const std::string postfix,
-    const std::string solver_name, const std::string cnf_name,
-		const time_point_t program_start, workunit &wu,
-		const unsigned cube_time_lim)
+    const std::string solver_name, const std::string param_str,
+    const std::string cnf_name, const time_point_t program_start,
+    workunit &wu, const unsigned cube_time_lim)
 {
 	bool isSAT = false;
 	std::string wu_id_str = std::to_string(wu.id);
@@ -371,7 +384,11 @@ bool solve_cube(const cnf c, const std::string postfix,
 	local_cnf_file.close();
 
 	std::string system_str = "timelimit -t " + std::to_string(cube_time_lim) +
-	                         " -T 1 " + solver_name + " " + local_cnf_file_name;
+	                         " -T 1 " + solver_name;
+	if (param_str != "")
+	    system_str += " " + param_str;
+	system_str += " " + local_cnf_file_name;
+	std::cout << system_str << std::endl;
 	std::string local_out_file_name = "id-" + wu_id_str + "-out";
 	std::fstream local_out_file;
 	local_out_file.open(local_out_file_name, std::ios_base::out);
