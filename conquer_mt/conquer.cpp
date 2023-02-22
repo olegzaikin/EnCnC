@@ -22,10 +22,11 @@
 #include <chrono>
 #include <limits>
 #include <thread>
+#include <random>
 
 #include <omp.h>
 
-std::string version = "0.2.7";
+std::string version = "0.2.8";
 
 #define cube_t std::vector<int> 
 #define time_point_t std::chrono::time_point<std::chrono::system_clock>
@@ -93,6 +94,8 @@ void write_interrupted_cubes(const std::string postfix,
                              const std::vector<workunit> &wu_vec);
 std::string exec(const std::string cmd_str);
 result read_solver_result(const std::string fname);
+std::string clear_name(const std::string name);
+void kill_solver(std::string solver_name);
 
 void print_usage() {
 	std::cout << "Usage : conquer solver CNF cubes cube-time-limit [Options]" << std::endl;
@@ -106,10 +109,6 @@ void print_usage() {
 void print_version() {
 	std::cout << "version: " << version << std::endl;
 }
-
-std::string clear_name(const std::string name);
-
-
 
 int main(const int argc, const char *argv[]) {
 	std::vector<std::string> str_argv;
@@ -158,6 +157,21 @@ int main(const int argc, const char *argv[]) {
 	std::cout << "verbosity     : " << verb          << std::endl;
 	std::cout << "enum          : " << isEnum        << std::endl << std::endl;
 
+	// Generate a random number and add it as string to solver name.
+	// To goal it safely killall solver once SAT is found.
+	std::random_device dev;
+	std::mt19937 rng(dev());
+	std::uniform_int_distribution<std::mt19937::result_type> dist(1,1000000);
+	int rand = dist(rng);
+	std::stringstream sstream;
+	sstream << rand;
+	std::string new_solver_name = solver_name + "_" + sstream.str();
+	std::cout << new_solver_name << std::endl;
+	std::string system_str = "cp " + solver_name + " " + new_solver_name;
+	exec(system_str);
+	solver_name = new_solver_name;
+	std::cout << "Updated solver name : " << solver_name << std::endl;
+
 	const unsigned nthreads = cpunum > 0 ? cpunum : std::thread::hardware_concurrency();
 	std::cout << "threads       : " << nthreads << std::endl;
 	omp_set_num_threads(nthreads);
@@ -192,14 +206,15 @@ int main(const int argc, const char *argv[]) {
 	bool isSAT = false;
 	#pragma omp parallel for schedule(dynamic, 1)
 	for (auto &wu : wu_vec) {
-		if (isSAT && !isEnum) {
-		    std::cout << "Skip a cube because SAT is found." << std::endl;
-		    continue;
-		}
 		bool res = solve_cube(c, postfix, solver_name, param_str, cnf_name,
                   program_start, wu, cube_time_lim);
 		solved_cubes++;		
 		if (res) isSAT = true;
+		if (isSAT && !isEnum) {
+		    //std::cout << "Skip a cube because SAT is found." << std::endl;
+		    //continue;
+		    kill_solver(solver_name);
+		}
 		
 		std::cout << "solved cubes : " << solved_cubes << std::endl;
 	}
@@ -219,6 +234,8 @@ int main(const int argc, const char *argv[]) {
 
 	return 0;
 }
+
+
 
 // Read cubes from a given file
 std::vector<workunit> read_cubes(const std::string cubes_name) {
@@ -458,6 +475,11 @@ std::string exec(const std::string cmd_str) {
 	}
 	pclose(pipe);
 	return result;
+}
+
+void kill_solver(std::string solver_name) {
+	std::string system_str = "killall -9 " + solver_name;
+	exec(system_str);
 }
 
 result read_solver_result(const std::string fname) {
