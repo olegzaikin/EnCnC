@@ -25,7 +25,7 @@
 
 #include <omp.h>
 
-std::string version = "0.2.5";
+std::string version = "0.2.6";
 
 #define cube_t std::vector<int> 
 #define time_point_t std::chrono::time_point<std::chrono::system_clock>
@@ -333,7 +333,7 @@ void write_stat(const std::string postfix, const std::vector<workunit> &wu_vec,
 	const time_point_t program_end = std::chrono::system_clock::now();
 	const double elapsed = std::chrono::duration_cast<std::chrono::seconds>(program_end - program_start).count();
 
-	std::ofstream ofile(progress_name, std::ios_base::app);
+	std::ofstream ofile(progress_name, std::ios_base::out);
 	ofile << "***" << std::endl
 	<< "elapsed time    : " << elapsed       << std::endl
 	<< "cubes           : " << wu_vec.size() << std::endl
