@@ -25,19 +25,19 @@
 
 #include <omp.h>
 
-std::string version = "0.2.4";
+std::string version = "0.2.5";
+
+#define cube_t std::vector<int> 
+#define time_point_t std::chrono::time_point<std::chrono::system_clock>
 
 bool verb = false;
 
 enum status{ NOT_STARTED = -1, IN_PROGRESS = 0, PROCESSED = 1};
 enum result{ UNSAT = 0, SAT = 1, INDET = 2 };
 
-#define cube_t std::vector<int> 
-#define time_point_t std::chrono::time_point<std::chrono::system_clock>
-
 struct workunit {
 	int id;
-  status stts;
+	status stts;
 	result rslt;
 	cube_t cube;
 	double time;
@@ -77,40 +77,37 @@ struct cnf {
 	};
 };
 
-bool compare_by_cube_size(const workunit &a, const workunit &b) {
-	return a.cube.size() > b.cube.size();
-}
-
+std::vector<workunit> read_cubes(const std::string cubes_name);
+std::string strAfterPrefix(std::string str, std::string prefix);
+bool compare_by_cube_size(const workunit &a, const workunit &b);
 std::vector<workunit> read_cubes(const std::string cubes_file_name);
-void solve_cube(const cnf c, const std::string postfix,
-								const std::string solver_name, const std::string cnf_name,
-								const time_point_t program_start,	workunit &wu,
-								const unsigned cube_time_lim);
+bool solve_cube(const cnf c, const std::string postfix,
+		const std::string solver_name, const std::string cnf_name,
+		const time_point_t program_start,	workunit &wu,
+		const unsigned cube_time_lim);
 void write_cubes_info(const std::string postfix,
                       const std::vector<workunit> &wu_vec);
 void write_stat(const std::string postfix,
-                const std::vector<workunit> &wu_vec,
-								const time_point_t start);
+                const std::vector<workunit> &wu_vec, const time_point_t start);
 void write_interrupted_cubes(const std::string postfix,
                              const std::vector<workunit> &wu_vec);
 std::string exec(const std::string cmd_str);
 result read_solver_result(const std::string fname);
 
 void print_usage() {
-	std::cout << "Usage : parallel_cubes solver-name cnf-name cubes-name " <<
-		           "cube-time-limit [--verb]" << std::endl;
+	std::cout << "Usage : conquer solver CNF cubes cube-time-limit [Options]" << std::endl;
+	std::cout << "  Options:" << std::endl
+		  << "    -cpunum=<int> : (default = all cores) CPU cores" << std::endl
+                  << "    --verb : increase verbosity." << std::endl
+		  << "    --enum : solve all subproblems." << std::endl;
 }
 
 void print_version() {
 	std::cout << "version: " << version << std::endl;
 }
 
-std::string clear_name(const std::string name) {
-	std::string res = name;
-	res.erase(remove(res.begin(), res.end(), '.'), res.end());
-	res.erase(remove(res.begin(), res.end(), '/'), res.end());
-	return res;
-}
+std::string clear_name(const std::string name);
+
 
 
 int main(const int argc, const char *argv[]) {
@@ -135,25 +132,43 @@ int main(const int argc, const char *argv[]) {
 	std::string cubes_name  = str_argv[3];
 	const unsigned cube_time_lim  = std::stoi(str_argv[4]);
 	assert(cube_time_lim > 0);
-	verb = (argc == 6 and str_argv[5] == "--verb") ? true : false;
-	std::cout << "solver_name : "   << solver_name   << std::endl;
-	std::cout << "cnf_name : "      << cnf_name      << std::endl;
-	std::cout << "cubes_name : "    << cubes_name    << std::endl;
+	bool isEnum = false;
+	unsigned cpunum = 0;
+	if (argc > 5) {
+	    for (int i=5; i < argc; ++i) {
+		    if (str_argv[i] == "--verb")
+			    verb = true;
+		    else if (str_argv[i] == "--enum")
+			    isEnum = true;
+		    else {
+			std::string s = strAfterPrefix(str_argv[i], "-cpunum=");
+			if (s != "")
+			    std::istringstream(s) >> cpunum;
+		    }
+	    }
+	}
+	std::cout << "solver_name   : " << solver_name   << std::endl;
+	std::cout << "cnf_name      : " << cnf_name      << std::endl;
+	std::cout << "cubes_name    : " << cubes_name    << std::endl;
 	std::cout << "cube_time_lim : " << cube_time_lim << std::endl;
-	std::cout << "verbosity : "     << verb          << std::endl;
+	std::cout << "cpunum        : " << cpunum        << std::endl;
+	std::cout << "verbosity     : " << verb          << std::endl;
+	std::cout << "enum          : " << isEnum        << std::endl << std::endl;
 
-	const unsigned nthreads = std::thread::hardware_concurrency();
-	std::cout << "threads : " << nthreads << std::endl;
+	const unsigned nthreads = cpunum > 0 ? cpunum : std::thread::hardware_concurrency();
+	std::cout << "threads       : " << nthreads << std::endl;
 	omp_set_num_threads(nthreads);
 
 	const time_point_t program_start = std::chrono::system_clock::now();
 
 	std::vector<workunit> wu_vec = read_cubes(cubes_name);
+	assert(wu_vec.size() > 0);
 	// Sort cubes by size in descending order:
 	//std::stable_sort(wu_vec.begin(), wu_vec.end(), compare_by_cube_size);
 	std::cout << "cubes : " << wu_vec.size() << std::endl;
 	std::cout << "first cubes : " << std::endl;
-	for (unsigned i = 0; i < 3; i++) wu_vec[i].print();
+	unsigned maxprint = wu_vec.size() >= 3 ? 3 : wu_vec.size(); 
+	for (unsigned i = 0; i < maxprint; i++) wu_vec[i].print();
 
 	cnf c(cnf_name);
 	c.print();
@@ -162,10 +177,17 @@ int main(const int argc, const char *argv[]) {
 	                            "_" + clear_name(cubes_name);
 
 	unsigned long long solved_cubes = 0;
+	bool isSAT = false;
 	#pragma omp parallel for schedule(dynamic, 1)
 	for (auto &wu : wu_vec) {
-		solve_cube(c, postfix, solver_name, cnf_name, program_start, wu, cube_time_lim);
-		solved_cubes++;
+		if (isSAT && !isEnum) {
+		    std::cout << "Skip a cube because SAT is found." << std::endl;
+		    continue;
+		}
+		bool res = solve_cube(c, postfix, solver_name, cnf_name, program_start, wu, cube_time_lim);
+		solved_cubes++;		
+		if (res) isSAT = true;
+		
 		std::cout << "solved cubes : " << solved_cubes << std::endl;
 	}
 
@@ -219,12 +241,25 @@ std::vector<workunit> read_cubes(const std::string cubes_name) {
 	return wu_vec;
 }
 
+std::string strAfterPrefix(std::string str, std::string prefix) {
+    int found = str.find( prefix );
+    if ( found != -1 )
+	return str.substr( found + prefix.length( ) );
+    return "";
+}
+
+std::string clear_name(const std::string name) {
+	std::string res = name;
+	res.erase(remove(res.begin(), res.end(), '.'), res.end());
+	res.erase(remove(res.begin(), res.end(), '/'), res.end());
+	return res;
+}
+
 void write_interrupted_cubes(const std::string postfix,
                              const std::vector<workunit> &wu_vec) {
 	std::string fname = "!interrupted_" + postfix;
 	std::ofstream inter_file(fname, std::ios_base::out);
 	for (auto &wu : wu_vec) {
-		assert(wu.stts == PROCESSED);
 		if (wu.rslt == INDET) {
 			inter_file << "a ";
 			for (auto lit : wu.cube) inter_file << lit << " ";
@@ -245,9 +280,8 @@ void write_cubes_info(const std::string postfix,
 	ofile.close();
 }
 
-void write_stat(const std::string postfix,
-							  const std::vector<workunit> &wu_vec,
-								const time_point_t program_start) {
+void write_stat(const std::string postfix, const std::vector<workunit> &wu_vec,
+		const time_point_t program_start) {
 	assert(wu_vec.size() > 0);
 	
 	std::string progress_name = "!progress_" + postfix;
@@ -320,11 +354,12 @@ void write_stat(const std::string postfix,
 	ofile.close();
 }
 
-void solve_cube(const cnf c, const std::string postfix,
+bool solve_cube(const cnf c, const std::string postfix,
     const std::string solver_name, const std::string cnf_name,
 		const time_point_t program_start, workunit &wu,
 		const unsigned cube_time_lim)
 {
+	bool isSAT = false;
 	std::string wu_id_str = std::to_string(wu.id);
 	std::string local_cnf_file_name = "id-" + wu_id_str + "-cnf";
 
@@ -363,6 +398,7 @@ void solve_cube(const cnf c, const std::string postfix,
 
 	// Remove temporary files:
 	if (res == SAT) {
+		isSAT = true;
 		const time_point_t program_end = std::chrono::system_clock::now();
 		const double elapsed = std::chrono::duration_cast<std::chrono::seconds>(program_end - program_start).count();
 		std::string fname = "!sat_info_cube_id_" + std::to_string(wu.id) +
@@ -386,6 +422,7 @@ void solve_cube(const cnf c, const std::string postfix,
 
 	system_str = "rm id-" + wu_id_str + "-*";
 	exec(system_str);
+	return isSAT;
 }
 
 std::string exec(const std::string cmd_str) {
