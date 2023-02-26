@@ -27,7 +27,7 @@
 using namespace std;
 
 string prog = "conquer_mpi";
-string version = "0.1.6";
+string version = "0.1.7";
 
 struct wu
 {
@@ -190,7 +190,7 @@ void controlProcess(const int corecount, const string cubes_file_name)
 	double start_time = MPI_Wtime();
 	vector<wu> wu_vec = readCubes(cubes_file_name);
 	// Sort cubes by size in descending order:
-	std::stable_sort(wu_vec.begin(), wu_vec.end(), compare_by_cube_size);
+	std::sort(wu_vec.begin(), wu_vec.end(), compare_by_cube_size);
 
 	cout << "wu_vec size : " << wu_vec.size() << endl;
 	cout << "first cubes : " << endl;
