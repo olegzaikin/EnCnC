@@ -27,7 +27,7 @@
 using namespace std;
 
 string prog = "conquer_mpi";
-string version = "0.1.7";
+string version = "0.1.8";
 
 struct wu
 {
@@ -50,7 +50,7 @@ bool compare_by_cube_size(const wu &a, const wu &b) {
 	return a.cube.size() > b.cube.size();
 }
 
-void controlProcess(const int corecount, const string cubes_file_name);
+void controlProcess(const int corecount, const string cubes_file_name, const bool is_enum);
 vector<wu> readCubes(const string cubes_file_name);
 void sendWU(vector<wu> &wu_vec, const int wu_id, const int computing_process_id);
 void computingProcess(const int rank, const string solver_file_name, const string cnf_file_name, 
@@ -88,8 +88,9 @@ int main(int argc, char *argv[])
 
 	if (argc < 5) {
 		cerr << "Usage : " << prog << " solver cnf cubes cube-cpu-limit [Options]" << endl;
-		cerr << "  Options:" <<
-		        "    -param=<string> : solver parameters' file name" << endl;
+		cerr << "  Options:" << endl <<
+		        "    -param=<string> : solver parameters' file name" << endl <<
+		        "    --enum          : solve all cubes-based subproblems" << endl;
 		return 1;
 	}
 
@@ -98,9 +99,18 @@ int main(int argc, char *argv[])
 	string cubes_file_name	= str_argv[3];
 	string cube_cpu_lim_str = str_argv[4];
 	string param_file_name  = "";
+	bool is_enum = false;
 	// Try to read solver's parameters:
-	if (argc > 5)
-		param_file_name = strAfterPrefix(str_argv[5], "-param=");
+	if (argc > 5) {
+		for (unsigned i=5; i < argc; ++i) {
+			if (str_argv[i] == "--enum")
+				is_enum = true;
+			else {            
+				string s = strAfterPrefix(str_argv[i], "-param=");
+				if (s != "") param_file_name = s;
+			}
+		}
+	}
 
 	string param_str = "";
 	if (param_file_name != "") {
@@ -116,10 +126,11 @@ int main(int argc, char *argv[])
 		cout << "cubes_file_name  : " << cubes_file_name << endl;
 		cout << "cube_cpu_limit   : " << cube_cpu_lim_str << endl;
 		cout << "param_file_name  : " << param_file_name << endl;
+		cout << "is_enum          : " << is_enum << endl;
 		if (param_file_name != "")
 			cout << "param_str : " << param_str << endl;
 
-		controlProcess(corecount, cubes_file_name);
+		controlProcess(corecount, cubes_file_name, is_enum);
 	}
 	else
 		computingProcess(rank, solver_file_name, cnf_file_name, cubes_file_name, 
@@ -185,7 +196,7 @@ vector<wu> readCubes(const string cubes_file_name)
 	return res_wu_cubes;
 }
 
-void controlProcess(const int corecount, const string cubes_file_name)
+void controlProcess(const int corecount, const string cubes_file_name, const bool is_enum)
 {
 	double start_time = MPI_Wtime();
 	vector<wu> wu_vec = readCubes(cubes_file_name);
@@ -232,7 +243,7 @@ void controlProcess(const int corecount, const string cubes_file_name)
 		
 		if (res == SAT) {
 			is_SAT = true;
-			break;
+			if (not is_enum) break;
 		}
 	
 		// send back a new WU
@@ -282,7 +293,7 @@ void controlProcess(const int corecount, const string cubes_file_name)
 	system_str = "rm ./out_process_*";
 	exec(system_str);
 
-	if (is_SAT) {
+	if (is_SAT and not is_enum) {
 		MPI_Abort(MPI_COMM_WORLD, 0);
 		exit(1);
 	}
