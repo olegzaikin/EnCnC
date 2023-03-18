@@ -27,7 +27,7 @@
 using namespace std;
 
 string prog = "conquer_mpi";
-string version = "0.1.8";
+string version = "0.1.10";
 
 struct wu
 {
@@ -46,9 +46,9 @@ const int SAT = 3;
 const int INDET = 4;
 const int REPORT_EVERY_SEC = 100;
 
-bool compare_by_cube_size(const wu &a, const wu &b) {
-	return a.cube.size() > b.cube.size();
-}
+//bool compare_by_cube_size(const wu &a, const wu &b) {
+//	return a.cube.size() > b.cube.size();
+//}
 
 void controlProcess(const int corecount, const string cubes_file_name, const bool is_enum);
 vector<wu> readCubes(const string cubes_file_name);
@@ -201,7 +201,7 @@ void controlProcess(const int corecount, const string cubes_file_name, const boo
 	double start_time = MPI_Wtime();
 	vector<wu> wu_vec = readCubes(cubes_file_name);
 	// Sort cubes by size in descending order:
-	std::sort(wu_vec.begin(), wu_vec.end(), compare_by_cube_size);
+	//std::sort(wu_vec.begin(), wu_vec.end(), compare_by_cube_size);
 
 	cout << "wu_vec size : " << wu_vec.size() << endl;
 	cout << "first cubes : " << endl;
@@ -268,7 +268,7 @@ void controlProcess(const int corecount, const string cubes_file_name, const boo
 	cout << "control process finished" << endl;
 
 	writeProcessingInfo(wu_vec);
-	
+
 	string inter_cubes_file_name = "!interrupted_" + cubes_file_name;
 	inter_cubes_file_name.erase(remove(inter_cubes_file_name.begin(), inter_cubes_file_name.end(), '.'), inter_cubes_file_name.end());
 	inter_cubes_file_name.erase(remove(inter_cubes_file_name.begin(), inter_cubes_file_name.end(), '/'), inter_cubes_file_name.end());
@@ -470,7 +470,7 @@ void computingProcess(const int rank, const string solver_file_name, const strin
 			cout << "computing prosess " << rank << " got the stop message" << endl;
 			break;
 		}
-		
+
 		string wu_id_str = intToStr(wu_id);
 		string tmp_cnf_file_name = "id-" + wu_id_str + "-cnf";
 		
@@ -514,8 +514,10 @@ void computingProcess(const int rank, const string solver_file_name, const strin
 		if (res == SAT) {
 			system_str = "cp " + out_name + " ./!sat_out_id_" + wu_id_str;
 			exec(system_str);
+			system_str = "cp " + tmp_cnf_file_name + " ./!sat_cnf_" + tmp_cnf_file_name;
+			exec(system_str);
 		}
-		else if (elapsed_solving_time > cube_cpu_lim + 10.0) {
+		else if (elapsed_solving_time > cube_cpu_lim + 60.0) {
 			system_str = "cp " + out_name + " ./!extra_time_out_id_" + wu_id_str;
 			exec(system_str);
 		}
