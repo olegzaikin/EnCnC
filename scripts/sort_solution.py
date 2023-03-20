@@ -20,19 +20,22 @@ import sys
 import binascii
 
 script_name = 'sort_solution.py'
-version = '0.0.3'
+version = '0.0.4'
 
 KNOWN_VARS_NUM = 512 
 
-if len(sys.argv) < 3:
-	print('Usage: cnf solution [input_vars]')
+if len(sys.argv) < 2:
+	print('Usage: solution [cnf] [input_vars]')
 	exit(1)
 
-cnfname = sys.argv[1]
-solname = sys.argv[2]
+solname = sys.argv[1]
 print('solname : ' + solname)
-print('cnfname : ' + cnfname)
-if len(sys.argv) == 4:
+
+cnfname = ''
+if len(sys.argv) > 2:
+		cnfname = sys.argv[2]
+		print('cnfname : ' + cnfname)
+if len(sys.argv) > 3:
     inputvarsname = sys.argv[3]
     print('inputvarsname : ' + inputvarsname)
     with open(inputvarsname, 'r') as ifile:
@@ -89,6 +92,9 @@ for x in input_bits:
     k += 1
 
 print('\n' + total_hex_str)
+
+if cnfname == '':
+		exit(1)
 
 vars_num = 0
 clauses_num = 0
