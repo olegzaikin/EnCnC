@@ -27,7 +27,7 @@
 using namespace std;
 
 string prog = "conquer_mpi";
-string version = "0.1.11";
+string version = "0.1.12";
 
 struct wu
 {
@@ -46,9 +46,9 @@ const int SAT = 3;
 const int INDET = 4;
 const int REPORT_EVERY_SEC = 100;
 
-//bool compare_by_cube_size(const wu &a, const wu &b) {
-//	return a.cube.size() > b.cube.size();
-//}
+bool compare_by_cube_size(const wu &a, const wu &b) {
+	return a.cube.size() > b.cube.size();
+}
 
 void controlProcess(const int corecount, const string cubes_file_name, const bool is_enum);
 vector<wu> readCubes(const string cubes_file_name);
