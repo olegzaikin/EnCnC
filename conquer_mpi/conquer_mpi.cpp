@@ -27,7 +27,7 @@
 using namespace std;
 
 string prog = "conquer_mpi";
-string version = "0.1.10";
+string version = "0.1.11";
 
 struct wu
 {
@@ -192,6 +192,9 @@ vector<wu> readCubes(const string cubes_file_name)
 		MPI_Abort(MPI_COMM_WORLD, 0);
 		exit(1);
 	}
+
+        // Sort cubes by size in descending order:
+        std::sort(res_wu_cubes.begin(), res_wu_cubes.end(), compare_by_cube_size);
 
 	return res_wu_cubes;
 }
