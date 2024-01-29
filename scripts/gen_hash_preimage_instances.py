@@ -14,14 +14,15 @@
 import sys
 
 script_name = "gen_hash_preimage_instances.py"
-version = "0.0.4"
+version = "0.0.5"
 
 if len(sys.argv) == 2 and sys.argv[1] == '-v':
     print('Script ' + script_name + ' of version : ' + version)
     exit(1)
 
 if len(sys.argv) < 5 or (len(sys.argv) == 2 and sys.argv[1] == '-h'):
-    print('Usage: ' + script_name + ' cnf-name hash-file hash-length inst-num')
+    print('Usage: ' + script_name + ' cnf-name hash-file hash-length inst-num [hash-vars-file]')
+    print('  hash-vars-file is optional since in transalg- anc cbmc-based CNFs it is not needed..')
     exit(1)
 
 cnf_name = sys.argv[1]
@@ -32,6 +33,10 @@ print('cnf_name : ' + cnf_name)
 print('hash_file : ' + hash_file)
 print('hash_len : ' + str(hash_len))
 print('instances_num : ' + str(instances_num))
+input_vars_file_name = ''
+if len(sys.argv) >= 6:
+  hash_vars_file_name = sys.argv[5]
+  print('hash_vars_file_name : ' + hash_vars_file_name)
 
 hashes = []
 with open(hash_file, 'r') as f:
@@ -49,6 +54,7 @@ for h in hashes:
   print(h)
 
 assert(instances_num <= len(hashes))
+
 
 vars_num = 0
 clauses_num = 0
@@ -92,6 +98,15 @@ elif 'cbmc' in cnf_name:
         for i in range(output_words_num):
                 for var in output_vars_arrays[i]:
                     vars.append(var)
+else:
+  assert(hash_vars_file_name != '')
+  with open(hash_vars_file_name, 'r') as hash_vars_file:
+    lines = hash_vars_file.read().splitlines()
+    line = lines[0]
+    assert('-' in line)
+    first_var = int(line.split('-')[0])
+    last_var = int(line.split('-')[1])
+    vars = [i for i in range(first_var, last_var+1)]
 
 assert(len(vars) > 0)
 
