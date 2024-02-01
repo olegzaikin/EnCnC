@@ -11,7 +11,7 @@
 // Example:
 //     ./conquer_mpi kissat problem.cnf cubes 5000
 //   add cubes from file cubes to CNF in problem.cnf, solve them by kissat.
-//==============================================================================
+//=============================================================================
 
 #include <mpi.h>
 #include <iostream>
@@ -27,7 +27,7 @@
 using namespace std;
 
 string prog = "conquer_mpi";
-string version = "0.1.12";
+string version = "0.2.0";
 
 struct wu
 {
@@ -45,24 +45,30 @@ const int UNSAT = 2;
 const int SAT = 3;
 const int INDET = 4;
 const int REPORT_EVERY_SEC = 100;
+const double MEAN_TIME_HARD_INSTANCES = 1000;
 
 bool compare_by_cube_size(const wu &a, const wu &b) {
 	return a.cube.size() > b.cube.size();
 }
 
-void controlProcess(const int corecount, const string cubes_file_name, const bool is_enum);
+void controlProcess(const int corecount, const string cubes_file_name,
+                    const bool is_enum);
 vector<wu> readCubes(const string cubes_file_name);
-void sendWU(vector<wu> &wu_vec, const int wu_id, const int computing_process_id);
-void computingProcess(const int rank, const string solver_file_name, const string cnf_file_name, 
-		      const string cubes_file_name, const string cube_cpu_lim_str, const string param_str);
-void writeInfoOutFile(const string control_process_ofile_name, vector<wu> wu_vec, const double start_time);
+void sendWU(vector<wu> &wu_vec, const int wu_index,
+            const int computing_process_id);
+void computingProcess(const int rank, const string solver_file_name,
+                      const string cnf_file_name,
+											const string cubes_file_name,
+											const string cube_cpu_lim_str, const string param_str);
+void writeInfoOutFile(const string control_process_ofile_name,
+                      vector<wu> wu_vec, const double start_time);
 int getResultFromFile(const string out_name);
 void writeProcessingInfo(vector<wu> &wu_vec);
 string exec(const string cmd_str);
 string intToStr(const int x);
 string strAfterPrefix(string str, string prefix);
 
-int total_processed_wus = 0;
+unsigned total_processed_wus = 0;
 
 int main(int argc, char *argv[])
 {
@@ -71,22 +77,22 @@ int main(int argc, char *argv[])
 	MPI_Init(&argc, &argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &corecount);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-	
+
 	vector<string> str_argv;
 	for (unsigned i=0; i<argc; ++i)
 		str_argv.push_back(argv[i]);
 	assert((unsigned)argc == str_argv.size());
 
 	if (rank == 0) {
-		cout << "corecount " << corecount << endl;
+		cout << "Running " << prog << " of version " << version << endl;
 		if ( (argc == 2) && 
 		     ((str_argv[1] == "-v") || (str_argv[1] == "--version")) ) {
-		    cout << prog << " of version " << version << endl;
 		    return 1;
 		}
+		cout << "corecount " << corecount << endl;
 	}
 
-	if (argc < 5) {
+	if ( (argc < 5) && (rank == 0) ) {
 		cerr << "Usage : " << prog << " solver cnf cubes cube-cpu-limit [Options]" << endl;
 		cerr << "  Options:" << endl <<
 		        "    -param=<string> : solver parameters' file name" << endl <<
@@ -94,13 +100,17 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+        assert(corecount > 1);
+	assert(rank >= 0);
+
 	string solver_file_name = str_argv[1];
-	string cnf_file_name	= str_argv[2];
+	string cnf_file_name	  = str_argv[2];
 	string cubes_file_name	= str_argv[3];
 	string cube_cpu_lim_str = str_argv[4];
 	string param_file_name  = "";
 	bool is_enum = false;
-	// Try to read solver's parameters:
+
+	// Parse input options:
 	if (argc > 5) {
 		for (unsigned i=5; i < argc; ++i) {
 			if (str_argv[i] == "--enum")
@@ -112,14 +122,22 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	// Try to read solver's parameters:
 	string param_str = "";
 	if (param_file_name != "") {
 		ifstream param_file(param_file_name, ios_base::in);
+		if (!param_file.is_open()) {
+			cerr << "Solver's parameters file " << param_file_name <<
+			        " is not opened." << endl;
+			MPI_Abort(MPI_COMM_WORLD, 0);
+			return 1;
+		}
 		getline(param_file, param_str);
+		assert(param_str.size() > 2);
 		param_file.close(); 
 	}
 
-	// control or computing process
+	// Control process:
 	if (rank == 0) {
 		cout << "solver_file_name : " << solver_file_name << endl;
 		cout << "cnf_file_name    : " << cnf_file_name << endl;
@@ -132,40 +150,49 @@ int main(int argc, char *argv[])
 
 		controlProcess(corecount, cubes_file_name, is_enum);
 	}
-	else
+	else { 
+		// Computing process:
 		computingProcess(rank, solver_file_name, cnf_file_name, cubes_file_name, 
 		  cube_cpu_lim_str, param_str);
+	}
 
 	return 0;
 }
 
-string strAfterPrefix( string str, string prefix )
+// Get the substring after a given prefix:
+string strAfterPrefix( const string str, const string prefix )
 {
+	assert( str != "" );
+	assert( prefix != "" );
 	int found = str.find( prefix );
-	if ( found != -1 )
-		return str.substr( found + prefix.length( ) );
+	if ( found > -1 )
+		return str.substr( found + prefix.length() );
 	return "";
 }
 
-string intToStr(const int x)
+// Convert integer into string:
+string intToStr( const int x )
 {
 	stringstream sstream;
 	sstream << x;
 	return sstream.str();
 }
 
+// Read cubes (vectors of literals) from a given file:
 vector<wu> readCubes(const string cubes_file_name)
 {
-	vector<wu> res_wu_cubes;
 	ifstream cubes_file(cubes_file_name);
 	if (!cubes_file.is_open()) {
 		cerr << "error: cubes_file " << cubes_file_name << " wasn't opened\n";
-		exit(-1);
+		MPI_Abort(MPI_COMM_WORLD, 0);
+		exit(1);
 	}
+
 	string str;
 	stringstream sstream;
-	vector<wu> wu_vec;
 	int wu_id = 0;
+	vector<wu> res_wu_cubes;
+
 	while (getline(cubes_file, str)) {
 		sstream << str;
 		string word;
@@ -188,23 +215,24 @@ vector<wu> readCubes(const string cubes_file_name)
 	cubes_file.close();
 	
 	if (!res_wu_cubes.size()) {
-		cerr << "wu_vec.size() == 0";
+		cerr << "res_wu_cubes.size() == 0";
 		MPI_Abort(MPI_COMM_WORLD, 0);
 		exit(1);
 	}
 
-        // Sort cubes by size in descending order:
-        std::sort(res_wu_cubes.begin(), res_wu_cubes.end(), compare_by_cube_size);
+	// Sort cubes by size in descending order:
+	std::sort(res_wu_cubes.begin(), res_wu_cubes.end(), compare_by_cube_size);
 
 	return res_wu_cubes;
 }
 
-void controlProcess(const int corecount, const string cubes_file_name, const bool is_enum)
+// A process that generates and manages tasks for computing processes:
+void controlProcess(const int corecount,
+                    const string cubes_file_name,
+                    const bool is_enum)
 {
 	double start_time = MPI_Wtime();
 	vector<wu> wu_vec = readCubes(cubes_file_name);
-	// Sort cubes by size in descending order:
-	//std::sort(wu_vec.begin(), wu_vec.end(), compare_by_cube_size);
 
 	cout << "wu_vec size : " << wu_vec.size() << endl;
 	cout << "first cubes : " << endl;
@@ -214,59 +242,71 @@ void controlProcess(const int corecount, const string cubes_file_name, const boo
 		cout << endl;
 	}
 	
-	// erase progress file
+	// Erase progress file:
 	string control_process_ofile_name = "!total_progress";
 	ofstream control_process_ofile(control_process_ofile_name, ios_base::out);
 	control_process_ofile.close();
 	
-	// send a wu to every computing process
-	int sending_id = 0;
+	// Send a task to every computing process:
+	int wu_index = 0;
 	for (int i = 0; i < corecount - 1; i++) {
-		sendWU(wu_vec, sending_id, i + 1);
-		sending_id++;
+		sendWU(wu_vec, wu_index, i + 1);
+		wu_index++;
 	}
 	
-	// receive results and send back new WUs
-	int wu_id, res;
+	// Eeceive results and send back new tasks:
+	int processed_wu_index, res;
 	double time;
 	double result_writing_time = -1;
 	int stop_mes = -1;
 	MPI_Status status, current_status;
 	bool is_SAT = false;
+	double sum_runtime = 0.0;
 	while (total_processed_wus < wu_vec.size()) {
-		// receive result
-		MPI_Recv(&wu_id, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+		// Receive a result:
+		MPI_Recv(&processed_wu_index, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
 		current_status = status;
 		MPI_Recv(&res,  1, MPI_INT, current_status.MPI_SOURCE, 0, MPI_COMM_WORLD, &status);
 		MPI_Recv(&time, 1, MPI_DOUBLE, current_status.MPI_SOURCE, 0, MPI_COMM_WORLD, &status);
-		wu_vec[wu_id].status = PROCESSED;
-		wu_vec[wu_id].result = res;
-		wu_vec[wu_id].processing_time = time;
+		assert((res >= UNSAT) && (res <= INDET));
+		assert(wu_vec[processed_wu_index].status == IN_PROGRESS);
+		wu_vec[processed_wu_index].status = PROCESSED;
+		wu_vec[processed_wu_index].result = res;
+		wu_vec[processed_wu_index].processing_time = time;
+		sum_runtime += time;
 		total_processed_wus++;
 		
+		// If a solution is found:
 		if (res == SAT) {
 			is_SAT = true;
 			if (not is_enum) break;
 		}
 	
-		// send back a new WU
-		if (sending_id < wu_vec.size()) {
-			sendWU(wu_vec, sending_id, current_status.MPI_SOURCE);
-			sending_id++;
+		// Send back a new task:
+		if (wu_index < wu_vec.size()) {
+			sendWU(wu_vec, wu_index, current_status.MPI_SOURCE);
+			wu_index++;
 		}
 		else {
 			cout << "sending stop message to computing process " << current_status.MPI_SOURCE << endl;
 			cout << "total_processed_wus : " << total_processed_wus << endl;
 			MPI_Send(&stop_mes, 1, MPI_INT, current_status.MPI_SOURCE, 0, MPI_COMM_WORLD);
 		}
-		// write results to a file not more often than every 100 seconds
-		if ((result_writing_time < 0) || (MPI_Wtime() - result_writing_time > REPORT_EVERY_SEC)) {
+
+		// Write results to a file not more frequently than every several seconds:
+				// If the first time:
+		if ( ( (result_writing_time < 0) || 
+					 // If it is time to write shince the given period has passed:
+		       (MPI_Wtime() - result_writing_time > REPORT_EVERY_SEC) ) ||
+					 // If instances are hard on average, write every result:
+				 (sum_runtime/total_processed_wus >= MEAN_TIME_HARD_INSTANCES) )
+		{
 			writeInfoOutFile(control_process_ofile_name, wu_vec, start_time);
 			writeProcessingInfo(wu_vec);
 			result_writing_time = MPI_Wtime();
 		}
 	}
-	
+
 	writeInfoOutFile(control_process_ofile_name, wu_vec, start_time);
 	cout << "control process finished" << endl;
 
@@ -304,14 +344,20 @@ void controlProcess(const int corecount, const string cubes_file_name, const boo
 	MPI_Finalize();
 }
 
-void sendWU(vector<wu> &wu_vec, const int wu_id, const int computing_process_id)
+// Send a task from the control process to a computing process:
+void sendWU(vector<wu> &wu_vec, const int wu_index, const int computing_process_id)
 {
-	MPI_Send(&wu_id, 1, MPI_INT, computing_process_id, 0, MPI_COMM_WORLD);
-	wu_vec[wu_id].status = IN_PROGRESS;
+	MPI_Send(&wu_index, 1, MPI_INT, computing_process_id, 0, MPI_COMM_WORLD);
+	assert(wu_vec[wu_index].status == NOT_STARTED);
+	wu_vec[wu_index].status = IN_PROGRESS;
 }
 
-void writeInfoOutFile(const string control_process_ofile_name, vector<wu> wu_vec, const double start_time)
+// Write output data to a file:
+void writeInfoOutFile(const string control_process_ofile_name,
+                      vector<wu> wu_vec, const double start_time)
 {
+	assert(wu_vec.size() > 0);
+	assert(start_time > 0.0);
 	double min_solving_time_unsat = 1e+308;
 	double max_solving_time_unsat = -1;
 	double avg_solving_time_unsat = -1;
@@ -321,8 +367,7 @@ void writeInfoOutFile(const string control_process_ofile_name, vector<wu> wu_vec
 	int unsat_cubes = 0;
 	int indet_cubes = 0;
 	for (auto cur_wu : wu_vec) {
-		if (cur_wu.status != PROCESSED)
-			continue;
+		if (cur_wu.status != PROCESSED) continue;
 		k++;
 		if (cur_wu.result == UNSAT) {
 			unsat_cubes++;
@@ -330,13 +375,11 @@ void writeInfoOutFile(const string control_process_ofile_name, vector<wu> wu_vec
 			min_solving_time_unsat = cur_wu.processing_time < min_solving_time_unsat ? cur_wu.processing_time : min_solving_time_unsat;
 			sum_time_unsat += cur_wu.processing_time;
 		}
-		else if (cur_wu.result == INDET)
-			indet_cubes++;
+		else if (cur_wu.result == INDET) indet_cubes++;
 		else if (cur_wu.result == SAT) {
 			sat_cubes++;
 			string ofile_name = "!sat_cube_id_" + intToStr(cur_wu.id);
 			ofstream ofile(ofile_name, ios_base::out);
-			
 			ofile << "SAT" << endl;
 			ofile << "time : " << cur_wu.processing_time << " s" << endl;
 			ofile << "cube id : " << cur_wu.id << endl;
@@ -347,12 +390,7 @@ void writeInfoOutFile(const string control_process_ofile_name, vector<wu> wu_vec
 			ofile.close();
 		}
 	}
-	if (k != total_processed_wus) {
-		cerr << "k != total_processed_wus" << endl;
-		cerr << k << " != " << total_processed_wus << endl;
-		MPI_Abort(MPI_COMM_WORLD, 0);
-		exit(-1);
-	}
+	assert(k == total_processed_wus);
 	if (sum_time_unsat > 0)
 		avg_solving_time_unsat = sum_time_unsat / unsat_cubes;
 	
@@ -374,8 +412,10 @@ void writeInfoOutFile(const string control_process_ofile_name, vector<wu> wu_vec
 	control_process_ofile.close();
 }
 
+// Execute a command in a UNIX-based OS:
 string exec(const string cmd_str)
 {
+	assert(cmd_str.size() > 1);
 	string result = "";
 	char* cmd = new char[cmd_str.size() + 1];
 	for (unsigned i = 0; i < cmd_str.size(); i++)
@@ -393,9 +433,15 @@ string exec(const string cmd_str)
 	return result;
 }
 
+// Parse a result in a CDCL solver's output:
 int getResultFromFile(const string out_name)
 {
 	ifstream out_file(out_name);
+	if (!out_file.is_open()) {
+		cerr << "File " << out_name << " wasn't opened" << endl;
+		MPI_Abort(MPI_COMM_WORLD, 0);
+		exit(1);
+	}
 	string str;
 	int result = INDET;
 	while (getline(out_file, str)) {
@@ -407,28 +453,8 @@ int getResultFromFile(const string out_name)
 			result = UNSAT;
 			break;
 		}
-		/*if (str.find("c CPU time") != string::npos) {
-			stringstream sstream;
-			sstream << str;
-			vector<string> vec;
-			string word;
-			while (sstream >> word)
-				vec.push_back(word);
-			if (vec.size() < 5) {
-				cerr << "error : vec size " << vec.size() << endl;
-				MPI_Abort(MPI_COMM_WORLD, 0);
-				exit(-1);
-			}
-			//istringstream(vec[4]) >> time;
-		}*/
 	}
 	out_file.close();
-	/*if (time == -1) {
-		cerr << "solving time == -1" << endl;
-		cerr << endl;
-		MPI_Abort(MPI_COMM_WORLD, 0);
-		exit(-1);
-	}*/
 	return result;
 }
 
@@ -439,21 +465,27 @@ void computingProcess(const int rank, const string solver_file_name, const strin
 	
 	stringstream cnf_sstream;
 	ifstream cnf_file(cnf_file_name);
+
+	if (!cnf_file.is_open()) {
+		cerr << "CNF file " << cnf_file_name << " is not opened." << endl;
+		MPI_Abort(MPI_COMM_WORLD, 0);
+	}
+
 	string str;
-	unsigned cnf_main_clauses = 0;
-	unsigned cnf_main_variables = 0;
+	unsigned clauses_num = 0;
+	unsigned var_num = 0;
 	while (getline(cnf_file, str)) {
 		if ((str.size() == 0) || (str[0] == 'p') || (str[0] == 'c'))
 			continue;
 		cnf_sstream << str << endl;
-		cnf_main_clauses++;
+		clauses_num++;
 		stringstream sstream;
 		sstream << str;
 		vector<int> vec;
 		int ival;
 		while (sstream >> ival) {
 			int abs_ival = abs(ival);
-			cnf_main_variables = (abs_ival > cnf_main_variables) ? abs_ival : cnf_main_variables;
+			var_num = (abs_ival > var_num) ? abs_ival : var_num;
 		}
 	}
 	cnf_file.close();
@@ -465,24 +497,27 @@ void computingProcess(const int rank, const string solver_file_name, const strin
 	cnf_file_name = base_path + "/" + cnf_file_name;*/
 	
 	MPI_Status status;
+	int wu_index = -1;
 	int wu_id = -1;
 	for (;;) {
-		MPI_Recv( &wu_id,    1, MPI_INT,  0, 0, MPI_COMM_WORLD, &status );
-		//cout << "received wu_id " << wu_id << endl;
-		if (wu_id == -1) {// stop message
+		MPI_Recv( &wu_index, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status );
+		//cout << "received wu_index " << wu_index << endl;
+		if (wu_index == -1) {// stop message
 			cout << "computing prosess " << rank << " got the stop message" << endl;
 			break;
 		}
 
+		wu_id = wu_vec[wu_index].id;
+		assert(wu_id >= 0);
 		string wu_id_str = intToStr(wu_id);
 		string tmp_cnf_file_name = "id-" + wu_id_str + "-cnf";
 		
 		stringstream cube_sstream;
-		for (auto x : wu_vec[wu_id].cube)
+		for (auto x : wu_vec[wu_index].cube)
 			cube_sstream << x << " 0" << endl;
 		
 		ofstream tmp_cnf(tmp_cnf_file_name, ios_base::out);
-		tmp_cnf << "p cnf " << cnf_main_variables << " " << cnf_main_clauses + wu_vec[wu_id].cube.size() << endl;
+		tmp_cnf << "p cnf " << var_num << " " << clauses_num + wu_vec[wu_index].cube.size() << endl;
 		tmp_cnf << cnf_sstream.str();
 		tmp_cnf << cube_sstream.str();
 		tmp_cnf.close();
@@ -532,16 +567,16 @@ void computingProcess(const int rank, const string solver_file_name, const strin
 		}
 
 		// send calculated result to the control process
-		//cout << "sending wu_id " << wu_id << endl;
+		//cout << "sending wu_index " << wu_index << endl;
 		//cout << "sending res " << res << endl;
-		MPI_Send( &wu_id, 1, MPI_INT,    0, 0, MPI_COMM_WORLD);
-		MPI_Send( &res,   1, MPI_INT,    0, 0, MPI_COMM_WORLD);
-		MPI_Send( &elapsed_solving_time,  1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+		MPI_Send( &wu_index,             1, MPI_INT,    0, 0, MPI_COMM_WORLD);
+		MPI_Send( &res,                  1, MPI_INT,    0, 0, MPI_COMM_WORLD);
+		MPI_Send( &elapsed_solving_time, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
 	}
 	MPI_Finalize();
 }
 
-
+// Write info about all tasks:
 void writeProcessingInfo(vector<wu> &wu_vec)
 {
 	ofstream ofile("!processing_info");
