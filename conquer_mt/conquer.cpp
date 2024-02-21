@@ -8,9 +8,10 @@
 // By default all threads are used.
 //
 // Example:
-//     ./conquer kissat problem.cnf cubes 5000
-//   add cubes from file cubes to CNF in problem.cnf, solve them by kissat.
-//==============================================================================
+//     ./conquer ./kissat problem.cnf ./cubes 5000 -cpunum=12
+//   adds cubes from the file ./cubes to the CNF problem.cnf and solves them by
+//   the solver kissat in 12 threads.
+//=============================================================================
 
 #include <iostream>
 #include <string>
@@ -26,7 +27,7 @@
 
 #include <omp.h>
 
-std::string version = "0.2.8";
+std::string version = "0.3.0";
 
 #define cube_t std::vector<int> 
 #define time_point_t std::chrono::time_point<std::chrono::system_clock>
@@ -79,7 +80,7 @@ struct cnf {
 };
 
 std::vector<workunit> read_cubes(const std::string cubes_name);
-std::string strAfterPrefix(std::string str, std::string prefix);
+std::string str_after_prefix(std::string str, std::string prefix);
 bool compare_by_cube_size(const workunit &a, const workunit &b);
 std::vector<workunit> read_cubes(const std::string cubes_file_name);
 bool solve_cube(const cnf c, const std::string postfix, const std::string solver_name,
@@ -98,12 +99,16 @@ std::string clear_name(const std::string name);
 void kill_solver(std::string solver_name);
 
 void print_usage() {
-	std::cout << "Usage : conquer solver CNF cubes cube-time-limit [Options]" << std::endl;
+	std::cout << "Usage : conquer solver CNF cubes cube-time-limit [Options]"
+	  	<< std::endl;
 	std::cout << "  Options:" << std::endl
 		  << "    -cpunum=<int>   : (default = all cores) CPU cores" << std::endl
 		  << "    -param=<string> : solver's command-line parameters" << std::endl
                   << "    --verb : increase verbosity." << std::endl
 		  << "    --enum : solve all subproblems." << std::endl;
+	std::cout << "NB1 : the solver must be a local file, i.e. ./minisat "
+			<< "instead of minisat" << std::endl;
+	std::cout << "NB2 : the local utility timelimit must be in the directory" << std::endl;
 }
 
 void print_version() {
@@ -142,9 +147,9 @@ int main(const int argc, const char *argv[]) {
 		    else if (str_argv[i] == "--enum")
 			    isEnum = true;
 		    else {
-			std::string s = strAfterPrefix(str_argv[i], "-cpunum=");
+			std::string s = str_after_prefix(str_argv[i], "-cpunum=");
 			if (s != "") std::istringstream(s) >> cpunum;
-			param_file_name = strAfterPrefix(str_argv[i], "-param=");
+			param_file_name = str_after_prefix(str_argv[i], "-param=");
 		    }
 	    }
 	}
@@ -203,21 +208,39 @@ int main(const int argc, const char *argv[]) {
 	                            "_" + clear_name(cubes_name);
 
 	unsigned long long solved_cubes = 0;
+	unsigned long long skipped_cubes = 0;
 	bool isSAT = false;
+
+	// Process all workunits in parallel:
 	#pragma omp parallel for schedule(dynamic, 1)
 	for (auto &wu : wu_vec) {
-		bool res = solve_cube(c, postfix, solver_name, param_str, cnf_name,
-                  program_start, wu, cube_time_lim);
-		solved_cubes++;		
-		if (res) isSAT = true;
 		if (isSAT && !isEnum) {
 		    //std::cout << "Skip a cube because SAT is found." << std::endl;
-		    //continue;
-		    kill_solver(solver_name);
+				skipped_cubes++;
+				std::cout << "skipped cubes : " << skipped_cubes << std::endl;
+				continue;
 		}
-		
+		bool res = solve_cube(c, postfix, solver_name, param_str, cnf_name,
+                  program_start, wu, cube_time_lim);
+		if (res) {
+			isSAT = true;
+			std::cout << "SAT is found." << std::endl;
+			// Kill the solver once if the SAT finding mode:
+			if(!isEnum) kill_solver(solver_name);
+		}
+		solved_cubes++;
 		std::cout << "solved cubes : " << solved_cubes << std::endl;
 	}
+
+	std::cout << std::endl;
+	if (isSAT) {
+		std::cout << "Result : SAT is found." << std::endl;
+	} else {
+		std::cout << "Result : SAT is not found." << std::endl;
+	}
+	std::cout << "Final solved cubes  : " << solved_cubes << std::endl;
+	std::cout << "Final skipped cubes : " << skipped_cubes << std::endl;
+	assert(solved_cubes + skipped_cubes == wu_vec.size());
 
 	// Write statistics:
 	write_stat(postfix, wu_vec, program_start);
@@ -228,7 +251,7 @@ int main(const int argc, const char *argv[]) {
 
 	const time_point_t program_end = std::chrono::system_clock::now();
 
-	std::cout << "elapsed : "
+	std::cout << "Elapsed : "
 	<< std::chrono::duration_cast<std::chrono::seconds>(program_end - program_start).count()
 	<< " seconds" << std::endl;
 
@@ -271,7 +294,7 @@ std::vector<workunit> read_cubes(const std::string cubes_name) {
 	return wu_vec;
 }
 
-std::string strAfterPrefix(std::string str, std::string prefix) {
+std::string str_after_prefix(std::string str, std::string prefix) {
     int found = str.find( prefix );
     if ( found != -1 )
 	return str.substr( found + prefix.length( ) );
