@@ -27,7 +27,7 @@
 
 #include <omp.h>
 
-std::string version = "0.3.0";
+std::string version = "0.3.1";
 
 #define cube_t std::vector<int> 
 #define time_point_t std::chrono::time_point<std::chrono::system_clock>
@@ -35,7 +35,7 @@ std::string version = "0.3.0";
 bool verb = false;
 
 enum status{ NOT_STARTED = -1, IN_PROGRESS = 0, PROCESSED = 1};
-enum result{ UNSAT = 0, SAT = 1, INDET = 2 };
+enum result{ UNSAT = 0, SAT = 1, INTERR = 2 };
 
 struct workunit {
 	int id;
@@ -43,7 +43,7 @@ struct workunit {
 	result rslt;
 	cube_t cube;
 	double time;
-	workunit() : id(-1), stts(NOT_STARTED), rslt(INDET), cube(), time(-1) {};
+	workunit() : id(-1), stts(NOT_STARTED), rslt(INTERR), cube(), time(-1) {};
 	void print() {
 		for (auto &c : cube) std::cout << c << " ";
 		std::cout << std::endl;
@@ -83,7 +83,7 @@ std::vector<workunit> read_cubes(const std::string cubes_name);
 std::string str_after_prefix(std::string str, std::string prefix);
 bool compare_by_cube_size(const workunit &a, const workunit &b);
 std::vector<workunit> read_cubes(const std::string cubes_file_name);
-bool solve_cube(const cnf c, const std::string postfix, const std::string solver_name,
+result solve_cube(const cnf c, const std::string postfix, const std::string solver_name,
 		const std::string param_str, const std::string cnf_name,
 		const time_point_t program_start, workunit &wu,
 		const unsigned cube_time_lim);
@@ -113,6 +113,17 @@ void print_usage() {
 
 void print_version() {
 	std::cout << "version: " << version << std::endl;
+}
+
+void print_stats(const unsigned long long sat_cubes,
+								 const unsigned long long unsat_cubes,
+								 const unsigned long long interr_cubes
+)
+{
+	std::cout << "sat-cubes : " << sat_cubes
+			      << "  unsat-cubes : " << unsat_cubes
+			      << "  interr-cubes : " << interr_cubes
+			      << std::endl;
 }
 
 int main(const int argc, const char *argv[]) {
@@ -207,40 +218,57 @@ int main(const int argc, const char *argv[]) {
 	const std::string postfix = clear_name(solver_name) + "_" + clear_name(cnf_name) +
 	                            "_" + clear_name(cubes_name);
 
-	unsigned long long solved_cubes = 0;
+	unsigned long long sat_cubes = 0;
+	unsigned long long unsat_cubes = 0;
+	unsigned long long interr_cubes = 0;
 	unsigned long long skipped_cubes = 0;
-	bool isSAT = false;
-
+	
 	// Process all workunits in parallel:
 	#pragma omp parallel for schedule(dynamic, 1)
 	for (auto &wu : wu_vec) {
-		if (isSAT && !isEnum) {
+		if (sat_cubes && !isEnum) {
 		    //std::cout << "Skip a cube because SAT is found." << std::endl;
 				skipped_cubes++;
-				std::cout << "skipped cubes : " << skipped_cubes << std::endl;
 				continue;
 		}
-		bool res = solve_cube(c, postfix, solver_name, param_str, cnf_name,
+		result res = solve_cube(c, postfix, solver_name, param_str, cnf_name,
                   program_start, wu, cube_time_lim);
-		if (res) {
-			isSAT = true;
+		if (res == SAT) {
+			sat_cubes++;
 			std::cout << "SAT is found." << std::endl;
+			print_stats(sat_cubes, unsat_cubes, interr_cubes);
 			// Kill the solver once if the SAT finding mode:
+			std::cout << "Killing solver " << solver_name << std::endl;
 			if(!isEnum) kill_solver(solver_name);
 		}
-		solved_cubes++;
-		std::cout << "solved cubes : " << solved_cubes << std::endl;
+		else if (res == UNSAT) {
+			unsat_cubes++;
+			print_stats(sat_cubes, unsat_cubes, interr_cubes);
+		}
+		else {
+			interr_cubes++;
+			assert(res == INTERR);
+			print_stats(sat_cubes, unsat_cubes, interr_cubes);
+		}
 	}
 
-	std::cout << std::endl;
-	if (isSAT) {
-		std::cout << "Result : SAT is found." << std::endl;
-	} else {
-		std::cout << "Result : SAT is not found." << std::endl;
+	std::cout << "skipped-cubes : " << skipped_cubes << std::endl;
+
+	unsigned long long wus_num = wu_vec.size();
+	assert(sat_cubes + unsat_cubes + interr_cubes + skipped_cubes == wus_num);
+
+	std::cout << "\nResult : ";
+	if (sat_cubes) {
+		assert(unsat_cubes < wus_num);
+		assert(interr_cubes < wus_num);
+		std::cout << "SAT" << std::endl;
 	}
-	std::cout << "Final solved cubes  : " << solved_cubes << std::endl;
-	std::cout << "Final skipped cubes : " << skipped_cubes << std::endl;
-	assert(solved_cubes + skipped_cubes == wu_vec.size());
+	else if (unsat_cubes == wus_num) {
+		std::cout << "UNSAT" << std::endl;
+	} 
+	else {
+		std::cout << "INTERRUPTED" << std::endl;
+	}
 
 	// Write statistics:
 	write_stat(postfix, wu_vec, program_start);
@@ -279,7 +307,7 @@ std::vector<workunit> read_cubes(const std::string cubes_name) {
 		workunit wu;
 		assert(wu.id == -1);
 		assert(wu.stts == NOT_STARTED);
-		assert(wu.rslt == INDET);
+		assert(wu.rslt == INTERR);
 		assert(wu.time == -1);
 		while (sstream >> word) {
 			if (word == "a" or word == "0") continue;
@@ -313,7 +341,7 @@ void write_interrupted_cubes(const std::string postfix,
 	std::string fname = "!interrupted_" + postfix;
 	std::ofstream inter_file(fname, std::ios_base::out);
 	for (auto &wu : wu_vec) {
-		if (wu.rslt == INDET) {
+		if (wu.rslt == INTERR) {
 			inter_file << "a ";
 			for (auto lit : wu.cube) inter_file << lit << " ";
 			inter_file << "0" << std::endl;
@@ -347,13 +375,13 @@ void write_stat(const std::string postfix, const std::vector<workunit> &wu_vec,
 	double max_time_sat = -1;
 	double avg_time_sat = -1;
 	double sum_time_sat = 0.0;
-	double min_time_indet = std::numeric_limits<double>::max();
-	double max_time_indet = -1;
-	double avg_time_indet = -1;
-	double sum_time_indet = 0.0;
-	int sat_cubes = 0;
-	int unsat_cubes = 0;
-	int indet_cubes = 0;
+	double min_time_interr = std::numeric_limits<double>::max();
+	double max_time_interr = -1;
+	double avg_time_interr = -1;
+	double sum_time_interr = 0.0;
+	unsigned long long sat_cubes = 0;
+	unsigned long long unsat_cubes = 0;
+	unsigned long long interr_cubes = 0;
 
 	unsigned long long processed_wus = 0;
 	for (auto wu : wu_vec) {
@@ -365,11 +393,11 @@ void write_stat(const std::string postfix, const std::vector<workunit> &wu_vec,
 			max_time_unsat = std::max(wu.time, max_time_unsat);
 			sum_time_unsat += wu.time;
 		}
-		else if (wu.rslt == INDET) {
-			indet_cubes++;
-			min_time_indet = std::min(wu.time, min_time_indet);
-			max_time_indet = std::max(wu.time, max_time_indet);
-			sum_time_indet += wu.time;
+		else if (wu.rslt == INTERR) {
+			interr_cubes++;
+			min_time_interr = std::min(wu.time, min_time_interr);
+			max_time_interr = std::max(wu.time, max_time_interr);
+			sum_time_interr += wu.time;
 		}
 		else if (wu.rslt == SAT) {
 			sat_cubes++;
@@ -381,7 +409,7 @@ void write_stat(const std::string postfix, const std::vector<workunit> &wu_vec,
 
 	if (sum_time_unsat > 0) avg_time_unsat = sum_time_unsat / unsat_cubes;
 	if (sum_time_sat > 0) avg_time_sat = sum_time_sat / sat_cubes;
-	if (sum_time_indet > 0) avg_time_indet = sum_time_indet / indet_cubes;
+	if (sum_time_interr > 0) avg_time_interr = sum_time_interr / interr_cubes;
 	double percent_val = double(processed_wus * 100) / (double)wu_vec.size();
 	const time_point_t program_end = std::chrono::system_clock::now();
 	const double elapsed = std::chrono::duration_cast<std::chrono::seconds>(program_end - program_start).count();
@@ -394,25 +422,24 @@ void write_stat(const std::string postfix, const std::vector<workunit> &wu_vec,
 	<< " %" << std::endl
 	<< "unsat_cubes     : " << unsat_cubes    << std::endl
 	<< "sat_cubes       : " << sat_cubes      << std::endl
-	<< "indet_cubes     : " << indet_cubes    << std::endl
+	<< "interr_cubes    : " << interr_cubes   << std::endl
 	<< "min_time_unsat  : " << min_time_unsat << std::endl
 	<< "max_time_unsat  : " << max_time_unsat << std::endl
   << "avg_time_unsat  : " << avg_time_unsat << std::endl
 	<< "min_time_sat    : " << min_time_sat   << std::endl
 	<< "max_time_sat    : " << max_time_sat   << std::endl
   << "avg_time_sat    : " << avg_time_sat   << std::endl
-	<< "min_time_indet  : " << min_time_indet << std::endl
-	<< "max_time_indet  : " << max_time_indet << std::endl
-	<< "avg_time_indet  : " << avg_time_indet << std::endl;
+	<< "min_time_interr : " << min_time_interr << std::endl
+	<< "max_time_interr : " << max_time_interr << std::endl
+	<< "avg_time_interr : " << avg_time_interr << std::endl;
 	ofile.close();
 }
 
-bool solve_cube(const cnf c, const std::string postfix,
+result solve_cube(const cnf c, const std::string postfix,
     const std::string solver_name, const std::string param_str,
     const std::string cnf_name, const time_point_t program_start,
     workunit &wu, const unsigned cube_time_lim)
 {
-	bool isSAT = false;
 	std::string wu_id_str = std::to_string(wu.id);
 	std::string local_cnf_file_name = "id-" + wu_id_str + "-cnf";
 
@@ -455,7 +482,6 @@ bool solve_cube(const cnf c, const std::string postfix,
 
 	// Remove temporary files:
 	if (res == SAT) {
-		isSAT = true;
 		const time_point_t program_end = std::chrono::system_clock::now();
 		const double elapsed = std::chrono::duration_cast<std::chrono::seconds>(program_end - program_start).count();
 		std::string fname = "!sat_info_cube_id_" + std::to_string(wu.id) +
@@ -479,7 +505,7 @@ bool solve_cube(const cnf c, const std::string postfix,
 
 	system_str = "rm id-" + wu_id_str + "-*";
 	exec(system_str);
-	return isSAT;
+	return res;
 }
 
 std::string exec(const std::string cmd_str) {
@@ -506,7 +532,7 @@ void kill_solver(std::string solver_name) {
 }
 
 result read_solver_result(const std::string fname) {
-	result res = INDET;
+	result res = INTERR;
 	std::ifstream ifile(fname, std::ios_base::in);
 	if (!ifile.is_open()) {
 		std::cerr << "solver result file " << fname << " wasn't opened\n";
