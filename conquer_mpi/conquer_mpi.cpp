@@ -27,7 +27,7 @@
 using namespace std;
 
 string prog = "conquer_mpi";
-string version = "0.2.0";
+string version = "0.2.1";
 
 struct wu
 {
@@ -247,11 +247,12 @@ void controlProcess(const int corecount,
 	ofstream control_process_ofile(control_process_ofile_name, ios_base::out);
 	control_process_ofile.close();
 	
-	// Send a task to every computing process:
 	int wu_index = 0;
 	for (int i = 0; i < corecount - 1; i++) {
 		sendWU(wu_vec, wu_index, i + 1);
 		wu_index++;
+		// If wus num is lower than core count:
+		if (wu_index == wu_vec.size()) break;
 	}
 	
 	// Eeceive results and send back new tasks:
@@ -347,6 +348,8 @@ void controlProcess(const int corecount,
 // Send a task from the control process to a computing process:
 void sendWU(vector<wu> &wu_vec, const int wu_index, const int computing_process_id)
 {
+	assert(wu_index >= 0);
+	assert(wu_index < wu_vec.size());
 	MPI_Send(&wu_index, 1, MPI_INT, computing_process_id, 0, MPI_COMM_WORLD);
 	assert(wu_vec[wu_index].status == NOT_STARTED);
 	wu_vec[wu_index].status = IN_PROGRESS;
