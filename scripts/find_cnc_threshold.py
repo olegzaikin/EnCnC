@@ -31,15 +31,15 @@ import logging
 import time
 from enum import Enum
 
-version = "1.4.5"
+version = "1.4.6"
 
 # Input options:
 class Options:
 	la_solver = 'march_cu'
-	cdcl_solvers = ['kissat_3.0.0']
+	cdcl_solvers = ['kissat3']
 	sample_size = 1000
 	min_cubes = 10000
-	max_cubes = 2000000
+	max_cubes = 1000000
 	max_cubes_parallel = 10000000
 	min_refuted_leaves = 1000
 	max_la_time = 86400
