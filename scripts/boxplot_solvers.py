@@ -14,7 +14,7 @@ import sys
 import glob
 import os
 
-version = "0.1.11"
+version = "0.1.12"
 script_name = 'boxplot_solvers.py'
 
 PC_CORES = 12
@@ -147,7 +147,10 @@ def read_unsat_samples(unsat_samples_file_name : str):
 		t = float(row['time'])
 		if t >= SOLVER_TIME_LIM:
 			t = -1
-		s = solvers_short_names_dict[row['solver']]
+		if row['solver'] in solvers_short_names_dict:
+		    s = solvers_short_names_dict[row['solver']]
+		else:
+		    s = row['solver']
 		if n not in unsat_samples:
 			unsat_samples[n] = dict()
 		if s not in unsat_samples[n]:
