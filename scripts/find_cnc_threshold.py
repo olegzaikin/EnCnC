@@ -31,7 +31,7 @@ import logging
 import time
 from enum import Enum
 
-version = "1.4.6"
+version = "1.4.7"
 
 # Input options:
 class Options:
@@ -297,10 +297,26 @@ def process_cube_solver(cnf_name : str, n : int, cube : list, cube_index : int, 
 	global op
 	known_cube_cnf_name = './sample_cnf_n_' + str(n) + '_cube_' + str(cube_index) + '_task_' + str(task_index) + '.cnf'
 	add_cube(cnf_name, known_cube_cnf_name, cube)
+
+	# Parse clasp's parameters:
+	solver_params = ''
+	if 'clasp' in solver:
+		clasp_config = 'auto'
+		clasp_enum = 'auto'
+		words = solver.split('-')
+		if len(words) > 1:
+			clasp_config = words[1]
+			solver = words[0]
+		if len(words) > 2:
+			clasp_enum = words[2]
+		solver_params = '--configuration=' + clasp_config + ' --enum-mode=' \
+			+ clasp_enum + ' --models=0'
+
 	if '.sh' in solver:
 		sys_str = solver + ' ' + known_cube_cnf_name + ' ' + str(op.max_cdcl_time)
 	else:
-		sys_str = 'timelimit -T 1 -t ' + str(op.max_cdcl_time) + ' ' + solver + ' ' + known_cube_cnf_name
+		sys_str = 'timelimit -T 1 -t ' + str(op.max_cdcl_time) + ' ' + solver + \
+			' ' + solver_params + ' ' + known_cube_cnf_name
 	t = time.time()
 	cdcl_log = os.popen(sys_str).read()
 	t = time.time() - t
