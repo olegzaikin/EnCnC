@@ -27,7 +27,7 @@
 using namespace std;
 
 string prog = "conquer_mpi";
-string version = "0.2.1";
+string version = "0.2.2";
 
 struct wu
 {
@@ -56,10 +56,10 @@ void controlProcess(const int corecount, const string cubes_file_name,
 vector<wu> readCubes(const string cubes_file_name);
 void sendWU(vector<wu> &wu_vec, const int wu_index,
             const int computing_process_id);
-void computingProcess(const int rank, const string solver_file_name,
+void computingProcess(const int rank, string solver_file_name,
                       const string cnf_file_name,
 											const string cubes_file_name,
-											const string cube_cpu_lim_str, const string param_str);
+											const string cube_cpu_lim_str, string param_str);
 void writeInfoOutFile(const string control_process_ofile_name,
                       vector<wu> wu_vec, const double start_time);
 int getResultFromFile(const string out_name);
@@ -461,8 +461,8 @@ int getResultFromFile(const string out_name)
 	return result;
 }
 
-void computingProcess(const int rank, const string solver_file_name, const string cnf_file_name,
-		      const string cubes_file_name, const string cube_cpu_lim_str, const string param_str)
+void computingProcess(const int rank, string solver_file_name, const string cnf_file_name,
+		      const string cubes_file_name, const string cube_cpu_lim_str, string param_str)
 {
 	vector<wu> wu_vec = readCubes(cubes_file_name);
 	
@@ -524,7 +524,23 @@ void computingProcess(const int rank, const string solver_file_name, const strin
 		tmp_cnf << cnf_sstream.str();
 		tmp_cnf << cube_sstream.str();
 		tmp_cnf.close();
-		
+
+		// Parse clasp's parameters:
+		if (solver_file_name.find("clasp") != string::npos) {
+			string clasp_config_str = "auto";
+			string clasp_enum_str = "auto";
+			size_t first = solver_file_name.find("-");
+			size_t last = solver_file_name.find_last_of("-");
+			if (first != string::npos and last != string::npos) {
+				clasp_config_str = solver_file_name.substr(first+1, last-first-1);
+				clasp_enum_str = solver_file_name.substr(last+1, solver_file_name.size()-last-1);
+				// Cut the solver name to get an executable clasp name:
+				solver_file_name = solver_file_name.substr(0, first);
+			}
+			param_str = "--configuration=" + clasp_config_str +
+					" --enum-mode=" + clasp_enum_str + " --models=0";
+		}
+
 		string system_str;
 		if (solver_file_name.find(".sh") != string::npos) {
 			// cube_cpu_lim_str is used as cpu-lim for an incremental SAT solver
