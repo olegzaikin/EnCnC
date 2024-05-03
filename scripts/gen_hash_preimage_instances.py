@@ -14,7 +14,7 @@
 import sys
 
 script_name = "gen_hash_preimage_instances.py"
-version = "0.0.5"
+version = "0.0.6"
 
 if len(sys.argv) == 2 and sys.argv[1] == '-v':
     print('Script ' + script_name + ' of version : ' + version)
@@ -55,7 +55,6 @@ for h in hashes:
 
 assert(instances_num <= len(hashes))
 
-
 vars_num = 0
 clauses_num = 0
 
@@ -80,9 +79,9 @@ print('main_clauses size : ' + str(len(main_clauses)))
 
 cnf_name_without_ext = cnf_name.split('.cnf')[0]
 
-vars = []
+hash_vars = []
 if 'transalg' in cnf_name:
-      vars = [i for i in range(vars_num - hash_len + 1, vars_num+1)]
+      hash_vars = [i for i in range(vars_num - hash_len + 1, vars_num+1)]
 elif 'cbmc' in cnf_name:
       output_words_num = 0
       with open(cnf_name, 'r') as cnf_file:
@@ -97,7 +96,7 @@ elif 'cbmc' in cnf_name:
         k = 0
         for i in range(output_words_num):
                 for var in output_vars_arrays[i]:
-                    vars.append(var)
+                    hash_vars.append(var)
 else:
   assert(hash_vars_file_name != '')
   with open(hash_vars_file_name, 'r') as hash_vars_file:
@@ -106,12 +105,12 @@ else:
     assert('-' in line)
     first_var = int(line.split('-')[0])
     last_var = int(line.split('-')[1])
-    vars = [i for i in range(first_var, last_var+1)]
+    hash_vars = [i for i in range(first_var, last_var+1)]
 
-assert(len(vars) > 0)
+assert(len(hash_vars) > 0)
 
-print('vars :')
-print(vars)
+print('hash_vars :')
+print(hash_vars)
 
 hash_index = 0
 assert(instances_num > 0)
@@ -119,7 +118,7 @@ for i in range(instances_num):
     k = 0
     literals = []
     #for var in range(vars_num - hash_len + 1, vars_num+1):
-    for var in vars:
+    for var in hash_vars:
         lit = ''
         if var >= 0:
             lit = '-' if hashes[i][k] == '0' else ''
@@ -128,8 +127,10 @@ for i in range(instances_num):
         lit += str(abs(var))
         literals.append(lit)
         k += 1
+        if k >= len(hashes[i]):
+            break
     assert(len(literals) == hash_len)
-    cnf_name = cnf_name_without_ext + '_hash' + str(hash_index) + '.cnf'
+    cnf_name = cnf_name_without_ext + '_hashlen' + str(hash_len) + '_inst' + str(hash_index) + '.cnf'
     with open(cnf_name, 'w') as ofile:
         ofile.write('p cnf ' + str(vars_num) + ' ' + str(clauses_num + len(literals)) + '\n')
         for clause in main_clauses:
