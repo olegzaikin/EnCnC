@@ -27,7 +27,7 @@
 using namespace std;
 
 string prog = "conquer_mpi";
-string version = "0.2.2";
+string version = "0.2.3";
 
 struct wu
 {
@@ -567,7 +567,8 @@ void computingProcess(const int rank, string solver_file_name, const string cnf_
 		double cube_cpu_lim = -1.0;
 		istringstream(cube_cpu_lim_str) >> cube_cpu_lim;
 		res = getResultFromFile(out_name);
-		// remove the temporary cnf file
+
+		// Save temporary files if SAT is found:
 		if (res == SAT) {
 			system_str = "cp " + out_name + " ./!sat_out_id_" + wu_id_str;
 			exec(system_str);
@@ -578,12 +579,12 @@ void computingProcess(const int rank, string solver_file_name, const string cnf_
 			system_str = "cp " + out_name + " ./!extra_time_out_id_" + wu_id_str;
 			exec(system_str);
 		}
-		else {
-			system_str = "rm ./id-" + wu_id_str + "-*";
-			exec(system_str);
-			system_str = "rm " + out_name;
-			exec(system_str);
-		}
+
+		// Remove temporary files:
+		system_str = "rm " + tmp_cnf_file_name;
+		exec(system_str);
+		system_str = "rm " + out_name;
+		exec(system_str);
 
 		// send calculated result to the control process
 		//cout << "sending wu_index " << wu_index << endl;
