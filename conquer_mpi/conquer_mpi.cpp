@@ -27,7 +27,7 @@
 using namespace std;
 
 string prog = "conquer_mpi";
-string version = "0.2.3";
+string version = "0.2.4";
 
 struct wu
 {
@@ -498,7 +498,32 @@ void computingProcess(const int rank, string solver_file_name, const string cnf_
 	base_path.erase(remove(base_path.begin(), base_path.end(), '\n'), base_path.end());
 	solver_file_name = base_path + "/" + solver_file_name;
 	cnf_file_name = base_path + "/" + cnf_file_name;*/
-	
+
+	// Parse clasp's parameters:
+	if (solver_file_name.find("clasp") != string::npos) {
+		if (rank == 1) {
+			std::cout << "clasp solver is found : " << solver_file_name << std::endl;
+		}
+		string clasp_config_str = "auto";
+		string clasp_enum_str = "auto";
+		size_t first = solver_file_name.find("-");
+		size_t last = solver_file_name.find_last_of("-");
+		if (first != string::npos and last != string::npos) {
+			clasp_config_str = solver_file_name.substr(first+1, last-first-1);
+			clasp_enum_str = solver_file_name.substr(last+1, solver_file_name.size()-last-1);
+			// Cut the solver name to get an executable clasp name:
+			solver_file_name = solver_file_name.substr(0, first);
+			if (rank == 1) {
+				std::cout << "solver name is changed to " << solver_file_name << std::endl;
+			}
+		}
+		param_str = "--configuration=" + clasp_config_str + " --enum-mode=" + 
+			clasp_enum_str + " --models=0";
+		if (rank == 1) {
+			std::cout << "param_str : " << param_str << std::endl;
+		}
+	}
+
 	MPI_Status status;
 	int wu_index = -1;
 	int wu_id = -1;
@@ -524,22 +549,6 @@ void computingProcess(const int rank, string solver_file_name, const string cnf_
 		tmp_cnf << cnf_sstream.str();
 		tmp_cnf << cube_sstream.str();
 		tmp_cnf.close();
-
-		// Parse clasp's parameters:
-		if (solver_file_name.find("clasp") != string::npos) {
-			string clasp_config_str = "auto";
-			string clasp_enum_str = "auto";
-			size_t first = solver_file_name.find("-");
-			size_t last = solver_file_name.find_last_of("-");
-			if (first != string::npos and last != string::npos) {
-				clasp_config_str = solver_file_name.substr(first+1, last-first-1);
-				clasp_enum_str = solver_file_name.substr(last+1, solver_file_name.size()-last-1);
-				// Cut the solver name to get an executable clasp name:
-				solver_file_name = solver_file_name.substr(0, first);
-			}
-			param_str = "--configuration=" + clasp_config_str +
-					" --enum-mode=" + clasp_enum_str + " --models=0";
-		}
 
 		string system_str;
 		if (solver_file_name.find(".sh") != string::npos) {
