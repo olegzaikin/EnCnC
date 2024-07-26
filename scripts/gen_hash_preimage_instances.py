@@ -14,15 +14,19 @@
 import sys
 
 script_name = "gen_hash_preimage_instances.py"
-version = "0.0.6"
+version = "0.0.7"
 
 if len(sys.argv) == 2 and sys.argv[1] == '-v':
     print('Script ' + script_name + ' of version : ' + version)
     exit(1)
 
 if len(sys.argv) < 5 or (len(sys.argv) == 2 and sys.argv[1] == '-h'):
-    print('Usage: ' + script_name + ' cnf-name hash-file hash-length inst-num [hash-vars-file]')
-    print('  hash-vars-file is optional since in transalg- anc cbmc-based CNFs it is not needed..')
+    print('Usage: ' + script_name + ' cnf-name hash-file hash-length inst-num [--hashvars=fname] [--random]')
+    print('  --hashvars : file name with hash variables in the format from-to')
+    print('    optional since in Transalg- anc cbmc-based CNFs the variables numbers are parsed from CNFs.')
+    print('  --random : 0hash and 1hash are marked, the remaining are randhashes')
+    print('  NB1. For CNFs made by Transalg, transalg must be a part of the CNF name.')
+    print('  NB2. For CNFs made by CBMC, the arrays of output varuables must be called output1.')
     exit(1)
 
 cnf_name = sys.argv[1]
@@ -33,10 +37,14 @@ print('cnf_name : ' + cnf_name)
 print('hash_file : ' + hash_file)
 print('hash_len : ' + str(hash_len))
 print('instances_num : ' + str(instances_num))
-input_vars_file_name = ''
-if len(sys.argv) >= 6:
-  hash_vars_file_name = sys.argv[5]
-  print('hash_vars_file_name : ' + hash_vars_file_name)
+is_random_hashes = False
+hash_vars_file_name = ''
+for i in range(5, len(sys.argv)):
+    if sys.argv[i] == '--random':
+        is_random_hashes = True
+    elif '--hashvars=' in sys.argv[i]:
+        hash_vars_file_name = sys.argv[i].split('--hashvars=')[1]
+        print('hash_vars_file_name : ' + hash_vars_file_name)
 
 hashes = []
 with open(hash_file, 'r') as f:
@@ -115,6 +123,7 @@ print(hash_vars)
 hash_index = 0
 assert(instances_num > 0)
 for i in range(instances_num):
+    assert(hash_index >= 0)
     k = 0
     literals = []
     #for var in range(vars_num - hash_len + 1, vars_num+1):
@@ -130,7 +139,16 @@ for i in range(instances_num):
         if k >= len(hashes[i]):
             break
     assert(len(literals) == hash_len)
-    cnf_name = cnf_name_without_ext + '_hashlen' + str(hash_len) + '_inst' + str(hash_index) + '.cnf'
+    if is_random_hashes:
+        if hash_index == 0:
+             tmp = '0hash'
+        elif hash_index == 1:
+             tmp = '1hash'
+        else:
+             tmp = 'randhash' + str(i-2)
+        cnf_name = cnf_name_without_ext + '_hashlen' + str(hash_len) + '_' + tmp + '.cnf'
+    else:
+        cnf_name = cnf_name_without_ext + '_hashlen' + str(hash_len) + '_inst' + str(hash_index) + '.cnf'
     with open(cnf_name, 'w') as ofile:
         ofile.write('p cnf ' + str(vars_num) + ' ' + str(clauses_num + len(literals)) + '\n')
         for clause in main_clauses:
