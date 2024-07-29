@@ -14,7 +14,7 @@
 import sys
 
 script_name = "gen_hash_preimage_instances.py"
-version = "0.0.7"
+version = "0.1.0"
 
 if len(sys.argv) == 2 and sys.argv[1] == '-v':
     print('Script ' + script_name + ' of version : ' + version)
@@ -23,10 +23,9 @@ if len(sys.argv) == 2 and sys.argv[1] == '-v':
 if len(sys.argv) < 5 or (len(sys.argv) == 2 and sys.argv[1] == '-h'):
     print('Usage: ' + script_name + ' cnf-name hash-file hash-length inst-num [--hashvars=fname] [--random]')
     print('  --hashvars : file name with hash variables in the format from-to')
-    print('    optional since in Transalg- anc cbmc-based CNFs the variables numbers are parsed from CNFs.')
+    print('    optional since e.g. in Transalg the output variables are the last ones.')
     print('  --random : 0hash and 1hash are marked, the remaining are randhashes')
-    print('  NB1. For CNFs made by Transalg, transalg must be a part of the CNF name.')
-    print('  NB2. For CNFs made by CBMC, the arrays of output varuables must be called output1.')
+    print('  NB. CNFs made by CBMC must be modifed by add_explicit_output_vars_cbmc.py beforehand.')
     exit(1)
 
 cnf_name = sys.argv[1]
@@ -88,25 +87,11 @@ print('main_clauses size : ' + str(len(main_clauses)))
 cnf_name_without_ext = cnf_name.split('.cnf')[0]
 
 hash_vars = []
-if 'transalg' in cnf_name:
+# If Transalg or CBMC (with added explicit output variables):
+if hash_vars_file_name == '':
       hash_vars = [i for i in range(vars_num - hash_len + 1, vars_num+1)]
-elif 'cbmc' in cnf_name:
-      output_words_num = 0
-      with open(cnf_name, 'r') as cnf_file:
-        lines = cnf_file.read().splitlines()
-        output_vars_arrays = [[0]*5 for i in range(5)]
-        for line in lines:
-                if 'output1!0@1#2[[' in line:
-                    output_words_num += 1
-                    index = int(line.split('output1!0@1#2[[')[1].split(']')[0])
-                    words = line.split(' ')[2:]
-                    output_vars_arrays[index] = [int(w) for w in words]
-        k = 0
-        for i in range(output_words_num):
-                for var in output_vars_arrays[i]:
-                    hash_vars.append(var)
+# If hash variables are given in a file:
 else:
-  assert(hash_vars_file_name != '')
   with open(hash_vars_file_name, 'r') as hash_vars_file:
     lines = hash_vars_file.read().splitlines()
     line = lines[0]
