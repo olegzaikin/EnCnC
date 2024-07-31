@@ -14,7 +14,7 @@
 #
 #==============================================================================
 
-version = '0.0.1'
+version = '0.0.2'
 
 script_name = 'partial_hash.py'
 
@@ -26,10 +26,10 @@ if len(sys.argv) < 4:
 
 print('Running script ' + script_name + ' of version ' + str(version))
 cnf_name = sys.argv[1]
-hashsize = sys.argv[2]
+hashsize = int(sys.argv[2])
 known_bits_str = sys.argv[3]
 print('cnf name   : ' + cnf_name)
-print('hash size  : ' + hashsize)
+print('hash size  : ' + str(hashsize))
 print('known bits : ')
 if '-' in known_bits_str:
   first = int(known_bits_str.split('-')[0])
@@ -45,15 +45,20 @@ main_clauses = []
 hash_clauses = []
 varnum = 0
 with open(cnf_name) as ifile:
-  for s in ifile:
-    if s[0] != 'c' and s[0] != 'p':
-      literals = s.split(' ')[:-1] # exclude 0 at the end
-      for lit in literals:
-        varnum = varnum if varnum >= abs(int(lit)) else abs(int(lit))
-      all_clauses.append(s)
-main_clauses = all_clauses[0:-128]
-hash_clauses = all_clauses[-128:]
+  lines = ifile.read().splitlines()
+  for line in lines:
+    if line[0] == 'c' or line[0] == 'p':
+      continue
+    literals = line.split(' ')[:-1] # exclude 0 at the end
+    for lit in literals:
+      varnum = varnum if varnum >= abs(int(lit)) else abs(int(lit))
+    all_clauses.append(line)
+print(str(len(all_clauses)) + ' clauses were read')
+main_clauses = all_clauses[0:-hashsize]
+hash_clauses = all_clauses[-hashsize:]
 print(str(len(hash_clauses)) + ' oneliteral hash-clauses : ')
+for cla in hash_clauses:
+  print(cla)
 
 for k in known_bits:
   new_cnf_name = cnf_name.split('.cnf')[0] + '_' + str(k) + 'bithash.cnf'
@@ -62,6 +67,7 @@ for k in known_bits:
   with open(new_cnf_name, 'w+') as ofile:
     ofile.write('p cnf ' + str(varnum) + ' ' + str(clanum) + '\n')
     for s in main_clauses:
-      ofile.write(s)
+      ofile.write(s + '\n')
     for s in hash_clauses[:k]:
-      ofile.write(s)
+      assert(len(s.split()) == 2 and s.split()[-1] == '0')
+      ofile.write(s + '\n')
