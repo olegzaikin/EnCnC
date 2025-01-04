@@ -27,7 +27,7 @@
 
 #include <omp.h>
 
-std::string version = "0.3.1";
+std::string version = "0.3.2";
 
 #define cube_t std::vector<int> 
 #define time_point_t std::chrono::time_point<std::chrono::system_clock>
@@ -255,7 +255,13 @@ int main(const int argc, const char *argv[]) {
 	std::cout << "skipped-cubes : " << skipped_cubes << std::endl;
 
 	unsigned long long wus_num = wu_vec.size();
-	assert(sat_cubes + unsat_cubes + interr_cubes + skipped_cubes == wus_num);
+	long long diff_num = wus_num - (sat_cubes + unsat_cubes + interr_cubes + skipped_cubes);
+	// diff_num can be > 0 because solver is interrupted when SAT is found:
+	assert(diff_num >= 0);
+	if (diff_num > 0) {
+		interr_cubes += diff_num;
+		std::cout << " Statuses of " << diff_num << " are not clear, so they are marked as interrupted" << std::endl;
+	}
 
 	std::cout << "\nResult : ";
 	if (sat_cubes) {
@@ -264,6 +270,7 @@ int main(const int argc, const char *argv[]) {
 		std::cout << "SAT" << std::endl;
 	}
 	else if (unsat_cubes == wus_num) {
+		assert(interr_cubes == 0);
 		std::cout << "UNSAT" << std::endl;
 	} 
 	else {
