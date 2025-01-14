@@ -20,7 +20,7 @@ import sys
 import binascii
 
 script_name = 'sort_solution.py'
-version = '0.0.4'
+version = '0.0.5'
 
 KNOWN_VARS_NUM = 512 
 
@@ -44,6 +44,9 @@ if len(sys.argv) > 3:
 else:
     input_vars = [i+1 for i in range(KNOWN_VARS_NUM)]
 
+print('input_vars :')
+print(input_vars)
+
 literals = []
 with open(solname, 'r') as f:
 	lines = f.read().splitlines()
@@ -59,7 +62,8 @@ with open(solname, 'r') as f:
 					literals.append(int(x))
 
 literals = sorted(literals, key=abs)
-#print(literals)
+print('literals :')
+print(literals)
 #for i in range(KNOWN_VARS_NUM):
 #	print('%d 0' % literals[i])
 
@@ -80,18 +84,25 @@ for var in input_vars:
 	    input_bits.append('')
 	input_bits[k] += '0' if literals[var-1] < 0 else '1'
 
-print(s)
-print('\n')
+#print(s)
+#print('\n')
 k = 0
 total_hex_str = ''
+latex_hex_str = ''
 for x in input_bits:
     s = x[::-1]
     hex_str = str(hex(int(s, 2)))
     print('X[' + str(k) + '] = ' + hex_str + ';')
     total_hex_str += hex_str + ' '
+    latex_hex_str += '$' + "\\" + 'mathtt{' + hex_str + '}$ '
+    if ((k+1) % 4 == 0):
+        latex_hex_str += "\\" + "\\" + '\n'
+    else:
+        latex_hex_str += '& '
     k += 1
 
 print('\n' + total_hex_str)
+print('\n' + latex_hex_str)
 
 if cnfname == '':
 		exit(1)
@@ -109,6 +120,16 @@ with open(cnfname, 'r') as f:
 			clauses_num = int(line.split(' ')[3])
 		else:
 			clauses.append(line)
+
+vars_set = set()
+for i in range(vars_num):
+	vars_set.add(i+1)
+
+vars_set_from_literals = set()
+for lit in literals:
+	vars_set_from_literals.add(abs(lit))
+
+assert(vars_set == vars_set_from_literals)
 
 with open(cnfname.split('.cnf')[0] + '_known' + str(KNOWN_VARS_NUM) + '.cnf', 'w') as f:
 	f.write('p cnf %d %d\n' % (vars_num, clauses_num + KNOWN_VARS_NUM))
