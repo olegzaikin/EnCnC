@@ -7,20 +7,19 @@
 #==============================================================================
 
 import sys
-import multiprocessing as mp
 import time
 import random
 import os
 import logging
 from enum import Enum
-import find_cnc_threshold as FindCncTr
+import os.path
 
-version = '0.1.3'
+version = '0.2.0'
 script_name = 'autom_constr_gen_crypt_hash.py'
 
-MARCH = 'march_cu'
-CDCL_SOLVER = 'kissat_3.0.0'
-SIMPLIFIER = 'cadical_1.5'
+LOOKAHEAD_SOLVER = 'march_cu'
+LOOHAHEAD_TIMELIM = 30
+CDCL_SOLVER = 'kissat4.0.1'
 
 class CubeType(Enum):
     first = 1
@@ -29,19 +28,21 @@ class CubeType(Enum):
 
 # Input options:
 class Options:
-  cubetype = CubeType.first # first, random or last cube
-  nstep = 50                # decrease step for the cutoff threshold
-  maxconfl = 20000000       # Limit on conflicts for a CDCL solver
-  maxconflsimpl = 100000    # Limit on conflicts for a simplifier
-  seed = 0                  # random seed
-  verb = 0                  # verbosity
+  cubetype = CubeType.first       # first, random or last cube
+  nstep = 50                      # decrease step for the cutoff threshold
+  cdcl_interm_maxconfl = 1000000   # CDCL solver's time limit on intermediate CNFs
+  cdcl_final_maxtime = 5000       # CDCL solver's time limit on final CNFs 
+  min_cubes = 1000                # Minimal cubes for each iteration
+  seed = 0                        # random seed
+  verb = 0                        # verbosity
   #def __init__(self):
   #  self.seed = round(time.time() * 1000)
   def __str__(self):
     return 'cube type : ' + str(self.cubetype.name) + '\n' +\
     'nstep : ' + str(self.nstep) + '\n' +\
-    'maxconflicts : ' + str(self.maxconfl) + '\n' +\
-    'maxconflictssimpl : ' + str(self.maxconflsimpl) + '\n' +\
+    'cdcl_interm_maxconfl : ' + str(self.cdcl_interm_maxconfl) + '\n' +\
+    'cdcl_final_maxtime : ' + str(self.cdcl_final_maxtime) + '\n' +\
+    'min_cubes : ' + str(self.min_cubes) + '\n' +\
     'seed : ' + str(self.seed) + '\n'
   def read(self, argv) :
     for p in argv:
@@ -58,10 +59,12 @@ class Options:
           exit(1)
       if '-nstep=' in p:
         self.nstep = int(p.split('-nstep=')[1])
-      if '-maxconfl=' in p:
-        self.maxconfl = int(p.split('-maxconfl=')[1])
-      if '-maxconflsimpl=' in p:
-        self.maxconflsimpl = int(p.split('-maxconflsimpl=')[1])
+      if '-maxconflinterm=' in p:
+        self.cdcl_interm_maxconfl = int(p.split('-maxconflinterm=')[1])
+      if '-maxtimefinal=' in p:
+        self.cdcl_final_maxtime = int(p.split('-maxtimefinal=')[1])
+      if '-mincubes=' in p:
+        self.min_cubes = int(p.split('-mincubes=')[1])
       if '-seed=' in p:
         self.seed = int(p.split('-seed=')[1])
       if '-verb=' in p:
@@ -70,15 +73,18 @@ class Options:
 def print_usage():
 	print('Usage : ' + script_name + ' CNF [options]')
 	print('options :\n' +\
-	'-cubetype=<str>      - (default : first)        which cube to choose : first, random, or last' + '\n' +\
-	'-nstep=<int>         - (default : 50)           step for decreasing threshold n for lookahead solver' + '\n' +\
-	'-maxconfl=<int>      - (default : 10 million)   limit on number of conflicts for CDCL solver' + '\n' +\
-	'-maxconflsimpl=<int> - (default : 100 thousand) limit on number of conflicts for simplifier' + '\n' +\
-	'-seed=<int>          - (default : time)         seed for pseudorandom generator' + '\n' +\
-	'-verb=<int>          - (default : 1)            verbose level')
+	'-cubetype=<str>       - (default : first)        which cube to choose : first, random, or last' + '\n' +\
+	'-nstep=<int>          - (default : 50)           step for decreasing threshold n for lookahead solver' + '\n' +\
+	'-maxconflinterm=<int> - (default : 100 thousand) CDCL solver time limit on intermediate CNFs' + '\n' +\
+	'-maxtimefinal=<int>   - (default : 5000)         CDCL solver time limit on final CNFs' + '\n' +\
+  '-mincubes=<int>       - (default : 1000)         Minimal cubes for each iteration' + '\n' +\
+	'-seed=<int>           - (default : time)         seed for pseudorandom generator' + '\n' +\
+	'-verb=<int>           - (default : 1)            verbose level; quiet if 0')
 
 # Read cubes from file:
 def read_cubes(cubes_name : str):
+  if not os.path.isfile(cubes_name):
+    return []
   cubes = []
   with open(cubes_name) as cubes_file:
     lines = cubes_file.read().splitlines()
@@ -94,7 +100,7 @@ def read_cubes(cubes_name : str):
 
 # Read free vars counted by march (they are different from the number of all variables):
 def get_march_free_vars_num(cnf_name : str):
-  sys_str = MARCH + ' ' + cnf_name + ' -d 1'
+  sys_str = LOOKAHEAD_SOLVER + ' ' + cnf_name + ' -d 1'
   o = os.popen(sys_str).read()
   lines = o.split('\n')
   vars = -1
@@ -104,11 +110,93 @@ def get_march_free_vars_num(cnf_name : str):
   assert(vars > 0)
   return vars
 
+# Add cube to a CNF as one-literal clauses:
+def add_cube(old_cnf_name : str, new_cnf_name : str, cube : list):
+	cnf_var_number = 0
+	clauses = []
+	with open(old_cnf_name, 'r') as cnf_file:
+		lines = cnf_file.readlines()
+		for line in lines:
+			if len(line) < 2 or line[0] == 'c':
+				continue
+			if line[0] == 'p':
+				cnf_var_number = line.split(' ')[2]
+			else:
+				clauses.append(line)
+	clauses_number = len(clauses) + len(cube)
+	#print('clauses_number : %d' % clauses_number)
+	with open(new_cnf_name, 'w') as cnf_file:
+		cnf_file.write('p cnf ' + str(cnf_var_number) + ' ' + str(clauses_number) + '\n')
+		for cl in clauses:
+			cnf_file.write(cl)
+		for c in cube:
+			cnf_file.write(c + ' 0\n')
+
+# Choose a maximal cutoff threshold that gives a desired number of cubes:
+def choose_cutoff_lookahead(op : Options, cnf_name : str):
+    free_vars_num = get_march_free_vars_num(cnf_name)
+    # Form a temporary CNF name - different for each cube type and seed:
+    cubetype_full_name = op.cubetype.name
+    if (op.cubetype.name == 'random'):
+      cubetype_full_name += '-seed=' + str(op.seed)
+    tmp_cubes_file_name ='tmp_cubes_' + cubetype_full_name
+    n = free_vars_num - op.nstep
+    k = 1
+    n_final = 0
+    cubes_num_final = 0
+    n_prev = 0
+    cubes_num_prev = 0
+    is_first = True
+    while True:
+      # Delete file with cubes
+      remove_file(tmp_cubes_file_name)
+      assert(n > 0 and n < free_vars_num)
+      # Do not limit the first call to get at least one cutoff:
+      if is_first:
+        march_sys_str = LOOKAHEAD_SOLVER + ' ' + cnf_name + ' -n ' + str(n) +\
+        ' -o ' + tmp_cubes_file_name 
+        is_first = False
+      else:
+        march_sys_str = 'timeout ' + str(LOOHAHEAD_TIMELIM) + ' ' +\
+        LOOKAHEAD_SOLVER + ' ' + cnf_name + ' -n ' + str(n) +\
+        ' -o ' + tmp_cubes_file_name 
+      # Run cubing:
+      os.popen(march_sys_str).read()
+      # Get cubes:
+      cubes = read_cubes(tmp_cubes_file_name)
+      cubes_num = len(cubes)
+      s = ' choosing cutoff, ' + str(free_vars_num) + ' vars, n=' + str(n) + ', ' + str(cubes_num) + ' cubes'
+      if cubes_num == 0:
+          s += ', interrupted'
+      print(s)
+      logging.info(s)
+      if cubes_num > op.min_cubes:
+          n_final = n
+          cubes_num_final = cubes_num
+          break
+      elif cubes_num == 0:
+          n_final = n_prev
+          cubes_num_final = cubes_num_prev
+          break
+      else:
+          n_prev = n
+          cubes_num_prev = cubes_num
+          if cubes_num <= 2:
+            k += 1
+            n = n - op.nstep*k
+          else:
+            n = n - op.nstep
+    assert(n_final > 0)
+    s = ' final cutoff, n=' + str(n_final)
+    print(s)
+    logging.info(s)
+    return n_final, cubes_num_final
+
 # Generate cubes by lookahead, choose one cube and add it to a given CNF.
 # cnf_name - CNF on which march is run;
 # orig_cnf_name - is needed only for forming a new CNF name;
 # iter_cnf_name - CNF to which a chosen cube is added.
-def find_cube_add_to_cnf(op : Options, cnf_name : str, orig_cnf_name : str, itr : int, verb : int):
+def find_cube_add_to_cnf(n : int, op : Options, cnf_name : str, orig_cnf_name : str, itr : int, verb : int):
     if verb:
         print('cnf name : ' + cnf_name)
     free_vars_num = get_march_free_vars_num(cnf_name)
@@ -120,19 +208,16 @@ def find_cube_add_to_cnf(op : Options, cnf_name : str, orig_cnf_name : str, itr 
     if (op.cubetype.name == 'random'):
       cubetype_full_name += '-seed=' + str(op.seed)
     iter_cnf_name = orig_cnf_name.split('.cnf')[0] + '_' + cubetype_full_name +\
-    '_iter' + str(itr) + '.cnf'
-    # Calculate cutoff threshold:
-    cutoff_threshold = free_vars_num - op.nstep
+    '_iter' + str(itr) + '.cnf' 
     # Form file name for cubes:
-    tmp_cubes_file_name ='tmp_cubes_' + \
-    cnf_name.replace('./','').replace('.cnf','') + '_' + cubetype_full_name
+    tmp_cubes_file_name ='tmp_cubes_' + cubetype_full_name
     # Form string for running march:
-    march_sys_str = MARCH + ' ' + cnf_name + ' -n ' +\
-    str(cutoff_threshold) + ' -o ' + tmp_cubes_file_name 
+    march_sys_str = LOOKAHEAD_SOLVER + ' ' + cnf_name + ' -n ' +\
+    str(n) + ' -o ' + tmp_cubes_file_name 
     if verb:
         print(march_sys_str)
     # Run cubing:
-    o = os.popen(march_sys_str).read()
+    os.popen(march_sys_str).read()
     # Get cubes:
     cubes = read_cubes(tmp_cubes_file_name)
     remove_file(tmp_cubes_file_name)
@@ -146,22 +231,25 @@ def find_cube_add_to_cnf(op : Options, cnf_name : str, orig_cnf_name : str, itr 
     if op.cubetype.name == 'first':
         cube = cubes[0]
     elif op.cubetype.name == 'random':
-        i = random.randint(0, len(cubes)-1)
-        cube = cubes[i]
+        j = -1
+        assert(len(cubes) >= 2)
+        j = random.randint(0, len(cubes)-1)
+        assert(j >= 0 and j <= len(cubes)-1)
+        cube = cubes[j]
     elif op.cubetype.name == 'last':
         cube = cubes[-1]
     if verb:
         print('chosen cube : ')
         print(cube)
     # Add cube to a new CNF:
-    FindCncTr.add_cube(cnf_name, iter_cnf_name, cube)
+    add_cube(cnf_name, iter_cnf_name, cube)
     #
-    return cubes_num, iter_cnf_name, cube, cutoff_threshold
+    return cubes_num, iter_cnf_name, cube, n
 
 # Remove file:
 def remove_file(file_name):
 	sys_str = 'rm -f ' + file_name
-	o = os.popen(sys_str).read()
+	os.popen(sys_str).read()
 
 def parse_cdcl_result(o):
 	res = 'UNKNOWN'
@@ -177,19 +265,12 @@ def parse_cdcl_result(o):
 			break
 	return res
 
-# Simplify a given CNF by preprocessing and update the CNF:
-def simplify(cnf_name : str, simpl_cnf_name : str, maxconflsimpl : int):
-  assert(maxconflsimpl >= 0)
-  sys_str = SIMPLIFIER + ' -f -P100 -c ' + str(maxconflsimpl) + ' ' + \
-  cnf_name + ' -o ' + simpl_cnf_name
-  t = time.time()
-  log = os.popen(sys_str).read()
-  t = float(time.time() - t)
-  res = parse_cdcl_result(log)
-  return res, t
-
-def cdcl_call(cnf_name : str, maxconfl : int):
-    sys_str = CDCL_SOLVER + ' ' + cnf_name + ' ' + '--conflicts=' + str(maxconfl)
+def cdcl_call(cnf_name : str, maxmeasure : int, type : str):
+    assert(type == 'time' or type == 'confl')
+    if type == 'confl':
+      sys_str = CDCL_SOLVER + ' ' + cnf_name + ' ' + '--conflicts=' + str(maxmeasure)
+    else:
+      sys_str = CDCL_SOLVER + ' ' + cnf_name + ' ' + '--time=' + str(maxmeasure)
     t = time.time()
     log = os.popen(sys_str).read()
     t = float(time.time() - t)
@@ -224,75 +305,63 @@ if __name__ == '__main__':
     total_time = time.time()
     s = 'Original CNF, ' + str(get_march_free_vars_num(orig_cnf_name)) + ' vars'
     print(s)
-    # Simplify the original CNF:
-    simpl_cnf_name = orig_cnf_name.split('.cnf')[0] + '_' + cubetype_full_name +\
-    '_simpl.cnf'
-    res = simplify(orig_cnf_name, simpl_cnf_name, op.maxconflsimpl)
-    s = 'Simplified CNF, ' + str(get_march_free_vars_num(simpl_cnf_name)) + ' vars'
-    isExit = False
-    if res[0] in ['SAT', 'UNSAT']:
-      s += '\n' + res[0] + ' ' + str(round(res[1], 2)) + ' seconds'
-      isExit = True
-    print(s)
-    logging.info(s)
-    if isExit:
-        exit(1)
     iteration_cnfs = []
     itr = 0
-    cur_cnf_name = simpl_cnf_name
+    cur_cnf_name = orig_cnf_name
     total_cube = []
 
     isBreak = False
     isSAT = False
     s0 = ''
+    cubes_num = 0
     while True:
         if op.verb:
             print('\n')
         s = 'iteration ' + str(itr) + ', '
         s += str(get_march_free_vars_num(cur_cnf_name)) + ' vars'
-        res = find_cube_add_to_cnf(op, cur_cnf_name, orig_cnf_name, itr, op.verb)
+        n, cubes_num = choose_cutoff_lookahead(op, cur_cnf_name)
+        assert(cubes_num >= 0)
+        if cubes_num <= 2:
+            print('<= 2 cubes. break.')
+            logging.info('<= 2 cubes. break.')
+            break
+        res = find_cube_add_to_cnf(n, op, cur_cnf_name, orig_cnf_name, itr, op.verb)
         assert(res[0] > 0 and len(res[2]) > 0)
         cubes_num = res[0]
         new_cnf_name = res[1]
         cube = res[2]
-        s += ', n=' + str(res[3]) + ', ' + str(cubes_num) + ' cubes'
-        if op.verb:
-            print(new_cnf_name + ' , ' + str(get_march_free_vars_num(new_cnf_name)) + ' vars before simpl')
-            #o = os.popen('cp ' + new_cnf_name + ' ' + new_cnf_name + '_').read()            
-        r = simplify(new_cnf_name, new_cnf_name, op.maxconflsimpl)
-        if r[0] in ['SAT', 'UNSAT']:
-            s0 = 'Solved ' + new_cnf_name + ' ' + r[0] + ' ' + str(r[1]) + ' seconds'
-            isBreak = True
-            if r[0] == 'SAT':
+        assert(n == res[3])
+        s0 = 'cube with ' + str(len(cube)) + ' literals :'
+        for x in cube:
+          s0 += ' ' + str(x)
+        print(s0)
+        logging.info(s0)
+        s += ', n=' + str(res[3]) + ', ' + str(cubes_num) + ' cubes'   
+        res = cdcl_call(new_cnf_name, op.cdcl_interm_maxconfl, 'confl')
+        if res[0] in ['SAT', 'UNSAT']:
+            s0 = 'Solved ' + new_cnf_name + ' ' + res[0] + ' ' + str(res[1]) + ' seconds'
+            if res[0] == 'SAT':
                 total_time = float(time.time() - total_time)
                 s0 += '\n total time : ' + str(total_time)
                 print(s0)
                 logging.info(s0)
                 exit(1)
+            break
         else:
             # Save a CNF for further processing:
             iteration_cnfs.append(new_cnf_name)
         if op.verb:
             print('total cube size : ' + str(len(total_cube)))
-        #if cur_cnf_name != orig_cnf_name:
-        #    remove_file(cur_cnf_name)
-        if cubes_num == 0 or cubes_num == 1:
-            print('0 or 1 cubes. break.')
-            logging.info('0 or 1 cubes. break.')
-            isBreak = True
-        else:
-            total_cube.extend(cube)
-            cur_cnf_name = new_cnf_name
+        total_cube.extend(cube)
+        cur_cnf_name = new_cnf_name
         print(s)
         logging.info(s)
         if s0 != '':
             print(s0)
             logging.info(s0)
-        if isBreak:
-            break
         itr += 1
 
-    remove_file(simpl_cnf_name)
+    #remove_file(simpl_cnf_name)
     print('total cube size : ' + str(len(total_cube)))
     logging.info('total cube size : ' + str(len(total_cube)))
     print('total cube :')
@@ -307,7 +376,7 @@ if __name__ == '__main__':
     for cnf_name in iteration_cnfs:
       #print('Solving ' + cnf_name)
       s = cnf_name
-      res = cdcl_call(cnf_name, op.maxconfl)
+      res = cdcl_call(cnf_name, op.cdcl_final_maxtime, 'time')
       cdcl_res = res[0]
       cdcl_time = res[1]
       isBreak = False
