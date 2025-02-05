@@ -14,7 +14,7 @@ import logging
 from enum import Enum
 import os.path
 
-version = '0.2.0'
+version = '0.2.1'
 script_name = 'autom_constr_gen_crypt_hash.py'
 
 LOOKAHEAD_SOLVER = 'march_cu'
@@ -310,9 +310,7 @@ if __name__ == '__main__':
     cur_cnf_name = orig_cnf_name
     total_cube = []
 
-    isBreak = False
-    isSAT = False
-    s0 = ''
+    is_SAT = False
     cubes_num = 0
     while True:
         if op.verb:
@@ -321,9 +319,9 @@ if __name__ == '__main__':
         s += str(get_march_free_vars_num(cur_cnf_name)) + ' vars'
         n, cubes_num = choose_cutoff_lookahead(op, cur_cnf_name)
         assert(cubes_num >= 0)
-        if cubes_num <= 2:
-            print('<= 2 cubes. break.')
-            logging.info('<= 2 cubes. break.')
+        if cubes_num == 0 or cubes_num == 1:
+            print('<= 0 or 1 cubes. break.')
+            logging.info('<= 0 or 1 cubes. break.')
             break
         res = find_cube_add_to_cnf(n, op, cur_cnf_name, orig_cnf_name, itr, op.verb)
         assert(res[0] > 0 and len(res[2]) > 0)
@@ -331,46 +329,44 @@ if __name__ == '__main__':
         new_cnf_name = res[1]
         cube = res[2]
         assert(n == res[3])
-        s0 = 'cube with ' + str(len(cube)) + ' literals :'
+        s += ', n=' + str(res[3]) + ', ' + str(cubes_num) + ' cubes'
+        s += '\ncube with ' + str(len(cube)) + ' literals :'
         for x in cube:
-          s0 += ' ' + str(x)
-        print(s0)
-        logging.info(s0)
-        s += ', n=' + str(res[3]) + ', ' + str(cubes_num) + ' cubes'   
+          s += ' ' + str(x)
+        print(s)
+        logging.info(s)
         res = cdcl_call(new_cnf_name, op.cdcl_interm_maxconfl, 'confl')
         if res[0] in ['SAT', 'UNSAT']:
             s0 = 'Solved ' + new_cnf_name + ' ' + res[0] + ' ' + str(res[1]) + ' seconds'
+            print(s0)
+            logging.info(s0)
             if res[0] == 'SAT':
-                total_time = float(time.time() - total_time)
-                s0 += '\n total time : ' + str(total_time)
-                print(s0)
-                logging.info(s0)
-                exit(1)
-            break
+                is_SAT = True
         else:
             # Save a CNF for further processing:
             iteration_cnfs.append(new_cnf_name)
         if op.verb:
             print('total cube size : ' + str(len(total_cube)))
         total_cube.extend(cube)
+        # Stop finding cubes if SAT is found:
+        if is_SAT:
+            break
         cur_cnf_name = new_cnf_name
-        print(s)
-        logging.info(s)
-        if s0 != '':
-            print(s0)
-            logging.info(s0)
         itr += 1
 
-    #remove_file(simpl_cnf_name)
-    print('total cube size : ' + str(len(total_cube)))
-    logging.info('total cube size : ' + str(len(total_cube)))
-    print('total cube :')
-    logging.info('Total cube :')
-    print(total_cube)
-    logging.info(total_cube)
-    logging.info('')
+    s = 'Total cube size : ' + str(len(total_cube))
+    s += '\nTotal cube :'
+    for x in total_cube:
+      s += ' ' + str(x)
+    s += '\n'
+    print(s)
+    logging.info(s)
 
-    iteration_cnfs.reverse()
+    # Don't run CDCL anymore if SAT is found:
+    if is_SAT:
+      iteration_cnfs = []
+    else:
+      iteration_cnfs.reverse()
 
     # Solve CNFs by a CDCL solver:
     for cnf_name in iteration_cnfs:
@@ -379,18 +375,15 @@ if __name__ == '__main__':
       res = cdcl_call(cnf_name, op.cdcl_final_maxtime, 'time')
       cdcl_res = res[0]
       cdcl_time = res[1]
-      isBreak = False
-      if cdcl_res == 'UNSAT':
-          remove_file(cnf_name)
-      elif cdcl_res == 'SAT':
-        isBreak = True
       s += ' ' + cdcl_res + ' ' + str(cdcl_time) + ' seconds'
       print(s)
       logging.info(s)
-      if isBreak:
+      if cdcl_res == 'UNSAT':
+        remove_file(cnf_name)
+      elif cdcl_res == 'SAT':
         break
 
     total_time = float(time.time() - total_time)
-    s = '\n total time : ' + str(total_time)
+    s = '\nTotal time : ' + str(total_time)
     print(s)
     logging.info(s)
