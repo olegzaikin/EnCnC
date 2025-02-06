@@ -14,7 +14,7 @@ import logging
 from enum import Enum
 import os.path
 
-version = '0.2.1'
+version = '0.2.2'
 script_name = 'autom_constr_gen_crypt_hash.py'
 
 LOOKAHEAD_SOLVER = 'march_cu'
@@ -311,6 +311,7 @@ if __name__ == '__main__':
     total_cube = []
 
     is_SAT = False
+    is_Break = False
     cubes_num = 0
     while True:
         if op.verb:
@@ -340,6 +341,7 @@ if __name__ == '__main__':
             s0 = 'Solved ' + new_cnf_name + ' ' + res[0] + ' ' + str(res[1]) + ' seconds'
             print(s0)
             logging.info(s0)
+            is_Break = True
             if res[0] == 'SAT':
                 is_SAT = True
         else:
@@ -349,7 +351,7 @@ if __name__ == '__main__':
             print('total cube size : ' + str(len(total_cube)))
         total_cube.extend(cube)
         # Stop finding cubes if SAT is found:
-        if is_SAT:
+        if is_Break:
             break
         cur_cnf_name = new_cnf_name
         itr += 1
@@ -363,25 +365,21 @@ if __name__ == '__main__':
     logging.info(s)
 
     # Don't run CDCL anymore if SAT is found:
-    if is_SAT:
-      iteration_cnfs = []
-    else:
-      iteration_cnfs.reverse()
-
-    # Solve CNFs by a CDCL solver:
-    for cnf_name in iteration_cnfs:
-      #print('Solving ' + cnf_name)
-      s = cnf_name
-      res = cdcl_call(cnf_name, op.cdcl_final_maxtime, 'time')
-      cdcl_res = res[0]
-      cdcl_time = res[1]
-      s += ' ' + cdcl_res + ' ' + str(cdcl_time) + ' seconds'
-      print(s)
-      logging.info(s)
-      if cdcl_res == 'UNSAT':
-        remove_file(cnf_name)
-      elif cdcl_res == 'SAT':
-        break
+    if not is_SAT:
+      # Solve CNFs by a CDCL solver:
+      for cnf_name in iteration_cnfs:
+        #print('Solving ' + cnf_name)
+        s = cnf_name
+        res = cdcl_call(cnf_name, op.cdcl_final_maxtime, 'time')
+        cdcl_res = res[0]
+        cdcl_time = res[1]
+        s += ' ' + cdcl_res + ' ' + str(cdcl_time) + ' seconds'
+        print(s)
+        logging.info(s)
+        if cdcl_res == 'UNSAT':
+          remove_file(cnf_name)
+        elif cdcl_res == 'SAT':
+          break
 
     total_time = float(time.time() - total_time)
     s = '\nTotal time : ' + str(total_time)
