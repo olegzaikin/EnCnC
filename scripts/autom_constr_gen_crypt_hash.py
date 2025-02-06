@@ -14,7 +14,7 @@ import logging
 from enum import Enum
 import os.path
 
-version = '0.2.2'
+version = '0.2.3'
 script_name = 'autom_constr_gen_crypt_hash.py'
 
 LOOKAHEAD_SOLVER = 'march_cu'
@@ -28,19 +28,19 @@ class CubeType(Enum):
 
 # Input options:
 class Options:
-  cubetype = CubeType.first       # first, random or last cube
-  nstep = 50                      # decrease step for the cutoff threshold
-  cdcl_interm_maxconfl = 1000000   # CDCL solver's time limit on intermediate CNFs
-  cdcl_final_maxtime = 5000       # CDCL solver's time limit on final CNFs 
-  min_cubes = 1000                # Minimal cubes for each iteration
-  seed = 0                        # random seed
-  verb = 0                        # verbosity
+  cubetype = CubeType.first # first, random, or last cube
+  nstep = 50                # decrease step for the cutoff threshold
+  cdcl_interm_maxtime = 10  # CDCL solver's time limit on intermediate CNFs
+  cdcl_final_maxtime = 5000 # CDCL solver's time limit on final CNFs 
+  min_cubes = 1000          # Minimal cubes for each iteration
+  seed = 0                  # random seed
+  verb = 0                  # verbosity
   #def __init__(self):
   #  self.seed = round(time.time() * 1000)
   def __str__(self):
     return 'cube type : ' + str(self.cubetype.name) + '\n' +\
     'nstep : ' + str(self.nstep) + '\n' +\
-    'cdcl_interm_maxconfl : ' + str(self.cdcl_interm_maxconfl) + '\n' +\
+    'cdcl_interm_maxtime : ' + str(self.cdcl_interm_maxtime) + '\n' +\
     'cdcl_final_maxtime : ' + str(self.cdcl_final_maxtime) + '\n' +\
     'min_cubes : ' + str(self.min_cubes) + '\n' +\
     'seed : ' + str(self.seed) + '\n'
@@ -60,7 +60,7 @@ class Options:
       if '-nstep=' in p:
         self.nstep = int(p.split('-nstep=')[1])
       if '-maxconflinterm=' in p:
-        self.cdcl_interm_maxconfl = int(p.split('-maxconflinterm=')[1])
+        self.cdcl_interm_maxtime = int(p.split('-maxconflinterm=')[1])
       if '-maxtimefinal=' in p:
         self.cdcl_final_maxtime = int(p.split('-maxtimefinal=')[1])
       if '-mincubes=' in p:
@@ -336,7 +336,7 @@ if __name__ == '__main__':
           s += ' ' + str(x)
         print(s)
         logging.info(s)
-        res = cdcl_call(new_cnf_name, op.cdcl_interm_maxconfl, 'confl')
+        res = cdcl_call(new_cnf_name, op.cdcl_interm_maxtime, 'time')
         if res[0] in ['SAT', 'UNSAT']:
             s0 = 'Solved ' + new_cnf_name + ' ' + res[0] + ' ' + str(res[1]) + ' seconds'
             print(s0)
@@ -366,6 +366,8 @@ if __name__ == '__main__':
 
     # Don't run CDCL anymore if SAT is found:
     if not is_SAT:
+      # Start solving last CNFs:
+      iteration_cnfs.reverse()
       # Solve CNFs by a CDCL solver:
       for cnf_name in iteration_cnfs:
         #print('Solving ' + cnf_name)
