@@ -14,7 +14,7 @@ import logging
 from enum import Enum
 import os.path
 
-version = '0.2.3'
+version = '0.2.4'
 script_name = 'autom_constr_gen_crypt_hash.py'
 
 LOOKAHEAD_SOLVER = 'march_cu'
@@ -75,9 +75,9 @@ def print_usage():
 	print('options :\n' +\
 	'-cubetype=<str>       - (default : first)        which cube to choose : first, random, or last' + '\n' +\
 	'-nstep=<int>          - (default : 50)           step for decreasing threshold n for lookahead solver' + '\n' +\
-	'-maxconflinterm=<int> - (default : 100 thousand) CDCL solver time limit on intermediate CNFs' + '\n' +\
-	'-maxtimefinal=<int>   - (default : 5000)         CDCL solver time limit on final CNFs' + '\n' +\
-  '-mincubes=<int>       - (default : 1000)         Minimal cubes for each iteration' + '\n' +\
+	'-maxconflinterm=<int> - (default : 10)           CDCL solver time limit in seconds on intermediate CNFs' + '\n' +\
+	'-maxtimefinal=<int>   - (default : 5000)         CDCL solver time limit in seconds on final CNFs' + '\n' +\
+	'-mincubes=<int>       - (default : 1000)         Minimal cubes for each iteration' + '\n' +\
 	'-seed=<int>           - (default : time)         seed for pseudorandom generator' + '\n' +\
 	'-verb=<int>           - (default : 1)            verbose level; quiet if 0')
 
@@ -366,8 +366,6 @@ if __name__ == '__main__':
 
     # Don't run CDCL anymore if SAT is found:
     if not is_SAT:
-      # Start solving last CNFs:
-      iteration_cnfs.reverse()
       # Solve CNFs by a CDCL solver:
       for cnf_name in iteration_cnfs:
         #print('Solving ' + cnf_name)
