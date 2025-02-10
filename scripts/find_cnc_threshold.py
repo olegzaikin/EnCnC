@@ -31,7 +31,7 @@ import logging
 import time
 from enum import Enum
 
-version = "1.4.7"
+version = "1.4.8"
 
 # Input options:
 class Options:
@@ -326,7 +326,7 @@ def process_cube_solver(cnf_name : str, n : int, cube : list, cube_index : int, 
 		# remove cnf with known cube
 		remove_file(known_cube_cnf_name)
 		cdcl_log = ''
-	return cnf_name, n, cube_index, solver, solver_time, isSat, cdcl_log
+	return cnf_name, n, cube_index, solver, solver_time, isSat, cdcl_log, known_cube_cnf_name
 
 # Collect a result obtained by CDCL solver on a CNF with cube:
 def collect_cube_solver_result(res):
@@ -340,6 +340,7 @@ def collect_cube_solver_result(res):
 	solver_time = res[4]
 	isSat = res[5]
 	cdcl_log = res[6]
+	known_cube_cnf_name = res[7]
 	results[n].append((cube_index,solver,solver_time)) # append a tuple
 	logging.info('n : %d, got %d results - cube_index %d, solver %s, time %f' % (n, len(results[n]), cube_index, solver, solver_time))
 	if isSat:
@@ -351,6 +352,11 @@ def collect_cube_solver_result(res):
 		with open('!sat_' + sat_name, 'w') as ofile:
 			ofile.write('*** SAT found\n')
 			ofile.write(cdcl_log)
+		# Copyt the SAT-CNF to a file that will not be deleted:
+		sat_cnf_name = '!cnf_' + sat_name
+		sys_str = 'cp ' + known_cube_cnf_name + ' ' + sat_cnf_name
+		os.popen(sys_str).read()
+		# Stop solver if needed:
 		if op.stop_sat:
 			stop_solver(solver, 'SAT was found', res)
 	elif solver_time > op.max_cdcl_time and op.stop_time:
