@@ -31,7 +31,7 @@ import logging
 import time
 from enum import Enum
 
-version = "1.4.8"
+version = "1.5.0"
 
 # Input options:
 class Options:
@@ -48,10 +48,9 @@ class Options:
 	nstep = 10
 	stop_sat = False
 	stop_time = False
+	param_file = ''
 	cpu_num = mp.cpu_count()
 	seed = 0
-	def __init__(self):
-		self.seed = round(time.time() * 1000)
 	def __str__(self):
 		s = 'la_solver : ' + str(self.la_solver) + '\n' +\
     'cdcl_solvers : '
@@ -69,6 +68,7 @@ class Options:
 		'nstep : ' + str(self.nstep) + '\n' +\
 		'stop_sat : ' + str(self.stop_sat) + '\n' +\
 		'stop_time : ' + str(self.stop_time) + '\n' +\
+		'param_file : ' + str(self.param_file) + '\n' +\
 		'cpu_num : ' + str(self.cpu_num) + '\n' +\
 		'seed : ' + str(self.seed) + '\n'
 		return s
@@ -105,6 +105,8 @@ class Options:
 				self.max_script_time = int(p.split('-maxt=')[1])
 			if '-nstep=' in p:
 				self.nstep = int(p.split('-nstep=')[1])
+			if '-param=' in p:
+				self.param_file = p.split('-param=')[1]
 			if '-cpunum=' in p:
 				self.cpu_num = int(p.split('-cpunum=')[1])
 			if '-seed=' in p:
@@ -128,6 +130,7 @@ def print_usage():
 	'-maxcdclt=<int>     - (default : 5000)     time limit in seconds for CDCL solver' + '\n' +\
 	'-maxt=<int>         - (default : 864000)   script time limit in seconds' + '\n' +\
 	'-nstep=<int>        - (default : 10)       step for decreasing threshold n for lookahead solver' + '\n' +\
+	'-param=<str>        - (default : '')       file with parameters for CDCL solver' + '\n' +\
 	'-cpunum=<int>       - (default : ' + str(mp.cpu_count()) + '        number of used CPU cores' + '\n' +\
 	'-seed=<int>         - (default : time)     seed for pseudorandom generator' + '\n' +\
 	'--stop_time         - (default : False)    stop if CDCL solver is interrupted' + '\n' +\
@@ -312,6 +315,11 @@ def process_cube_solver(cnf_name : str, n : int, cube : list, cube_index : int, 
 		solver_params = '--configuration=' + clasp_config + ' --enum-mode=' \
 			+ clasp_enum + ' --models=0'
 
+	if op.param_file != '':
+	    with open(op.param_file, 'r') as f:
+	      lines = f.read().splitlines()
+	      assert(len(lines) > 0)
+	      solver_params += lines[0]
 	if '.sh' in solver:
 		sys_str = solver + ' ' + known_cube_cnf_name + ' ' + str(op.max_cdcl_time)
 	else:
