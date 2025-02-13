@@ -14,12 +14,14 @@ import logging
 from enum import Enum
 import os.path
 
-version = '0.3.0'
+version = '0.3.1'
 script_name = 'autom_constr_gen_crypt_hash.py'
 
 LOOKAHEAD_SOLVER = 'march_cu'
 LOOHAHEAD_TIMELIM = 60
 CDCL_SOLVER = 'kissat4.0.1'
+MAX_TOTAL_CUBE_SIZE = 50
+MAX_ITER = 2
 
 class CubeType(Enum):
     first = 1
@@ -320,7 +322,11 @@ if __name__ == '__main__':
         res = find_cube_add_to_cnf(n, op, cur_cnf_name, orig_cnf_name, itr, restart_num, op.verb)
         assert(res[0] > 0 and len(res[2]) > 0)
         cubes_num = res[0]
-        new_cnf_name = res[1]
+        #
+        if cur_cnf_name != orig_cnf_name and res[0] != 'SAT':
+            remove_file(cur_cnf_name)
+        cur_cnf_name = res[1]
+        #
         cube = res[2]
         assert(n == res[3])
         s += ', n=' + str(res[3]) + ', ' + str(cubes_num) + ' cubes'
@@ -331,28 +337,30 @@ if __name__ == '__main__':
         s += '\ntotal cube size : ' + str(len(total_cube))
         print(s)
         logging.info(s)
-        res = cdcl_call(new_cnf_name, op.cdcl_maxtime, 'time')
+        res = cdcl_call(cur_cnf_name, op.cdcl_maxtime, 'time')
+        # Remove current cubed CNF if not SAT:
+        assert(cur_cnf_name != orig_cnf_name)
         # Break if SAT is found:
         if res[0] == 'SAT':
             is_SAT = True
-            s0 = '\n*** SAT ' + new_cnf_name + ' ' + res[0] + ' ' + str(res[1]) + ' seconds'
+            s0 = '\n*** SAT ' + cur_cnf_name + ' ' + res[0] + ' ' + str(res[1]) + ' seconds'
             print(s0)
             logging.info(s0)
             break
-        elif res[0] == 'UNSAT':
-            s0 = '\n** UNSAT ' + new_cnf_name + ' ' + res[0] + ' ' + str(res[1]) + ' seconds'
+        elif res[0] == 'UNSAT' or (len(total_cube) >= MAX_TOTAL_CUBE_SIZE and itr >= MAX_ITER):
+            s0 = ''
+            if res[0] == 'UNSAT':
+              s0 = '\n** UNSAT ' + cur_cnf_name + ' ' + res[0] + ' ' + str(res[1]) + ' seconds'
+            else:
+              s0 = '\n** Reached limit on total cube size and iterations'
             s0 += '\n** Restart after ' + str(int(time.time() - start_time)) + ' seconds'
             print(s0)
             logging.info(s0)
             itr = 0
             restart_num += 1
-            remove_file(new_cnf_name)
             cur_cnf_name = orig_cnf_name
             total_cube = []
         else:
-            if cur_cnf_name != orig_cnf_name:
-              remove_file(cur_cnf_name)
-            cur_cnf_name = new_cnf_name
             itr += 1
 
     s = 'Total cube size : ' + str(len(total_cube))
