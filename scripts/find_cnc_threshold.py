@@ -31,7 +31,7 @@ import logging
 import time
 from enum import Enum
 
-version = "1.5.0"
+version = "1.5.1"
 
 # Input options:
 class Options:
@@ -246,6 +246,14 @@ def process_n(n : int, cnf_name : str, op : Options):
 	refuted_leaves = -1
 	cubing_time = -1.0
 	cubes_num, refuted_leaves = parse_cubing_log(out)
+	real_cubes_num = 0
+	# Check that the real number of cubes matches with the declared number:
+	with open(cubes_name, 'r') as f:
+		lines = f.read().splitlines()
+		for line in lines:
+			if len(line) > 2 and line[:2] == 'a ':
+				real_cubes_num += 1
+	assert(real_cubes_num == cubes_num)
 	cubing_time = float(t)
 	return n, cubes_num, refuted_leaves, cubing_time, cubes_name
 
@@ -269,10 +277,6 @@ def collect_n_result(res):
 		random_cubes, remaining_cubes_str = get_random_cubes(cubes_name)
 		if len(random_cubes) > 0: # if random sample is small enough to obtain it
 			random_cubes_n[n] = random_cubes
-			# write all cubes which are not from the random sample to solve them further in the case n is the best one
-			with open(cubes_name, 'w') as remaining_cubes_file:
-				for cube in remaining_cubes_str:
-					remaining_cubes_file.write(cube)
 	else:
 		remove_file(cubes_name)
 	if cubes_num > op.max_cubes or cubing_time > op.max_la_time:
@@ -437,11 +441,12 @@ if __name__ == '__main__':
 				print('Stop due to high next cubes num')
 				exit_cubes_creating = True
 		if exit_cubes_creating or n <= 0:
+			time.sleep(2) # wait for la completion
 			#pool.terminate()
 			logging.info('Stop cubing phase. Last cubes nums are ' + str(cubes_num_lst[-2]) + ', ' + str(cubes_num_lst[-1]))
 			print('Stop cubing phase')
 			logging.info('killing unuseful processes')
-			kill_unuseful_processes(op.la_solver)
+			#kill_unuseful_processes(op.la_solver)
 			time.sleep(2) # wait for processes' termination
 			break
 
