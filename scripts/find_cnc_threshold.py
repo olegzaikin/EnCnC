@@ -31,7 +31,7 @@ import logging
 import time
 from enum import Enum
 
-version = "1.5.1"
+version = "1.5.2"
 
 # Input options:
 class Options:
@@ -446,7 +446,7 @@ if __name__ == '__main__':
 			logging.info('Stop cubing phase. Last cubes nums are ' + str(cubes_num_lst[-2]) + ', ' + str(cubes_num_lst[-1]))
 			print('Stop cubing phase')
 			logging.info('killing unuseful processes')
-			#kill_unuseful_processes(op.la_solver)
+			kill_unuseful_processes(op.la_solver)
 			time.sleep(2) # wait for processes' termination
 			break
 
