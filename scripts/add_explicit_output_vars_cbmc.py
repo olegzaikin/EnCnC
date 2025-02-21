@@ -14,7 +14,7 @@
 import sys
 
 script_name = "add_explicit_output_vars_cbmc.py"
-version = "0.0.1"
+version = "0.0.2"
 
 if len(sys.argv) == 2 and sys.argv[1] == '-v':
     print('Script ' + script_name + ' of version : ' + version)
@@ -67,6 +67,10 @@ for id in output_vars_litarals:
         s += str(lit) + ' '
     print(s)
 
+literals = sorted(literals, key=abs)
+print('Output literals after sorting:')
+print(literals)
+
 new_vars_num = len(output_vars_litarals)*len(output_vars_litarals[0])
 print(str(new_vars_num) + ' new output variables :')
 
@@ -75,7 +79,7 @@ print(new_vars)
 
 new_clauses = []
 for i in range(len(literals)):
-    # Two variable are equal: 
+    # Two variables are equal: 
     assert(literals[i] != 0)
     if literals[i] > 0:
       new_clauses.append(str(new_vars[i]) + ' -' + str(literals[i]) + ' 0')
