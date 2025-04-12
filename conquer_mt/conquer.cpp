@@ -27,7 +27,7 @@
 
 #include <omp.h>
 
-std::string version = "0.3.2";
+std::string version = "0.3.3";
 
 #define cube_t std::vector<int> 
 #define time_point_t std::chrono::time_point<std::chrono::system_clock>
@@ -82,7 +82,6 @@ struct cnf {
 std::vector<workunit> read_cubes(const std::string cubes_name);
 std::string str_after_prefix(std::string str, std::string prefix);
 bool compare_by_cube_size(const workunit &a, const workunit &b);
-std::vector<workunit> read_cubes(const std::string cubes_file_name);
 result solve_cube(const cnf c, const std::string postfix, const std::string solver_name,
 		const std::string param_str, const std::string cnf_name,
 		const time_point_t program_start, workunit &wu,
