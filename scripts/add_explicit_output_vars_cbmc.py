@@ -2,9 +2,15 @@
 # Author: Oleg Zaikin
 # E-mail: zaikin.icc@gmail.com
 #
-# Given a CNF produces by CBMC parse comments and collect literals for a given
-# output array's name. Then for each literal add a variable to the CNF
-# and two clauses which encode that the variable is equal to the literal.
+# Problem: In a CNF produced by CBMC, a variable (or array) from a C or C++
+# program can be encoded by literals rather than variables, e.g. by -1 2
+# instead of 1 2.  
+#
+# Solution: given a CNF produced by CBMC, parse comments and collect literals
+# for a given output array's name (or an output varible's name). Then for each
+# literal add a new (output) variable to the CNF and two clauses which encode 
+# that the variable is equal to the literal. As a result, the output arrays
+# (or an output variable) are now encoded by last several variables in a CNF.
 #
 # Example:
 #   python3 ./add_output_vars_cbmc.py ./1.cnf output1
@@ -14,7 +20,7 @@
 import sys
 
 script_name = "add_explicit_output_vars_cbmc.py"
-version = "0.0.2"
+version = "0.0.3"
 
 if len(sys.argv) == 2 and sys.argv[1] == '-v':
     print('Script ' + script_name + ' of version : ' + version)
@@ -23,20 +29,25 @@ if len(sys.argv) == 2 and sys.argv[1] == '-v':
 if len(sys.argv) < 3 or (len(sys.argv) == 2 and sys.argv[1] == '-h'):
     print('Usage: ' + script_name + ' cnf-name output-array-name')
     print('  cnf-name          : name of a CNF produced by CBMC')
-    print('  output-array-name : output array name from the C-file.')
+    print('  output-name       : output array (or output variable) name from the C- or C++-file.')
     print('Script produces a CNF where explicit output variables are added.')
     exit(1)
 
 cnfname = sys.argv[1]
-output_array_name = sys.argv[2]
-print('cnfname           : ' + cnfname)
-print('output_array_name : ' + output_array_name)
+output_program_name = sys.argv[2]
+print('cnfname    : ' + cnfname)
+print('output program name : ' + output_program_name)
 
 varnum = -1
 clanum = -1
 output_vars_litarals = dict()
 clauses = []
-prefix = output_array_name + '!0@1#2[['
+# Example of output variable y: c main::1::y!0@1#2 -1 10 12 14 16 18 20 22
+
+print('Trying to find output array ' + output_program_name)
+prefix_array = output_program_name + '!0@1#2[['
+prefix_variable = output_program_name + '!0@1#1'
+
 with open(cnfname, 'r') as f:
     lines = f.read().splitlines()
     for line in lines:
@@ -45,11 +56,17 @@ with open(cnfname, 'r') as f:
             assert(len(words) == 4)
             varnum = int(words[2])
             clanum = int(words[3])
-        elif prefix in line:
-            id = int(line.split(prefix)[1].split(']')[0])
+        elif prefix_array in line:
+            print('Output program array detected :')
+            print(line)
+            id = int(line.split(prefix_array)[1].split(']')[0])
             words = line.split(' ')[2:]
             output_vars_litarals[id] = [int(w) for w in words]
+        elif prefix_variable in line:
+            print('Output program variable detected :')
             print(line)
+            words = line.split('0@1#1')[1].split()
+            output_vars_litarals[0] = [int(w) for w in words]
         elif 'c ' in line:
             continue
         else:
